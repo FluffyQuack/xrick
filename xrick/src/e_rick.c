@@ -212,13 +212,13 @@ e_rick_action2(void)
 		return;
 	}
 	if (control_status & CONTROL_LEFT) {  /* move left */
-		x = E_RICK_ENT.x - 2;
 		game_dir = LEFT;
-		if (x < 0) {  /* prev submap */
+		if (E_RICK_ENT.x < 2) {  /* prev submap (was: x < 0 with signed x) */
 			e_rick_atExit = TRUE;
 			E_RICK_ENT.x = 0xe2;
 			return;
 		}
+		x = E_RICK_ENT.x - 2;
 	} else {  /* move right */
 		x = E_RICK_ENT.x + 2;
 		game_dir = RIGHT;
@@ -407,13 +407,13 @@ e_rick_action2(void)
   if (control_status & (CONTROL_LEFT|CONTROL_RIGHT)) {
     /* left-right: calc new x and test environment */
     if (control_status & CONTROL_LEFT) {
-      x = E_RICK_ENT.x - 0x02;
-      if (x < 0) {  /* (i.e. negative) prev submap */
+      if (E_RICK_ENT.x < 2) {  /* prev submap (was: x < 0 with signed x) */
 	e_rick_atExit = TRUE;
 	/*6dbd = 0x00;*/
 	E_RICK_ENT.x = 0xe2;
 	return;
       }
+      x = E_RICK_ENT.x - 0x02;
     }
     else {
       x = E_RICK_ENT.x + 0x02;
