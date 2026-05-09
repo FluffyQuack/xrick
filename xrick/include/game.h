@@ -25,6 +25,33 @@
 #define LEFT 1
 #define RIGHT 0
 
+/*
+ * Frame pacing.
+ *
+ * GAME_PACE_MODE selects the cadence used to advance game logic. Each entry
+ * in a cadence pattern is the duration of one game frame in microseconds;
+ * the pattern is cycled. The list-of-durations form is overkill for steady
+ * rates but keeps the door open for non-uniform cadences if we ever want
+ * them.
+ *
+ *   PACE_30FPS : steady 30 fps (33,333 us tick)
+ *   PACE_25FPS : steady 25 fps (40,000 us tick) -- matches the Atari ST
+ *                version's average gameplay rate
+ *
+ * GAME_RENDER_FPS bounds how often the framebuffer is presented. The render
+ * path is content-driven (sysvid_update only presents when there are dirty
+ * rects), so this is effectively a present-rate cap rather than a continuous
+ * redraw rate.
+ *
+ * GAME_PERIOD is kept for legacy callers (the menu/scroller scripts that
+ * stash and restore game_period); it is no longer the master clock.
+ */
+#define PACE_30FPS  0
+#define PACE_25FPS  1
+
+#define GAME_PACE_MODE   PACE_25FPS  /* <-- toggle between PACE_30FPS and PACE_25FPS */
+#define GAME_RENDER_FPS  60
+
 #define GAME_PERIOD 75
 
 #define GAME_BOMBS_INIT 6

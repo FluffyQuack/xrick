@@ -107,7 +107,35 @@ hscore_t game_hscores[8] = {
 static U8 save_map_row;
 static game_state_t game_state;
 static U32 tm, tmx;
-static U32 next_tick_us; /* absolute deadline, microseconds */
+
+/*
+ * Pace patterns. Each entry is a game-frame duration in microseconds; the
+ * pattern is cycled. Decoupled from render rate (see GAME_RENDER_FPS).
+ */
+typedef struct {
+	const U32 *tick_us;
+	int        count;
+} pace_pattern_t;
+
+/* Steady 30 fps. */
+static const U32 pace_30fps_us[] = { 33333 };
+
+/*
+ * Steady 25 fps -- the average rate the Atari ST version ran at, but with a
+ * uniform 40 ms tick instead of the original's 30 Hz / 15 Hz alternation.
+ * (The ST's uneven cadence was a hardware artifact of running 25 Hz logic
+ * on a 60 Hz output; we don't need to mimic the artifact, just the rate.)
+ */
+static const U32 pace_25fps_us[] = { 40000 };
+
+static const pace_pattern_t pace_patterns[] = {
+	{ pace_30fps_us, (int)(sizeof(pace_30fps_us) / sizeof(U32)) },
+	{ pace_25fps_us, (int)(sizeof(pace_25fps_us) / sizeof(U32)) },
+};
+
+static U32 next_tick_us;    /* absolute deadline for next game tick, us */
+static U32 next_render_us;  /* absolute deadline for next present, us */
+static int pace_idx;        /* index into the active pace pattern */
 
 
 /*
@@ -167,6 +195,7 @@ void game_toggleCheat(U8 nbr)
 
 /* prototype */
 static void game_loop(void);
+static void game_tick(void);
 static void game_exit(void);
 
 
@@ -185,29 +214,79 @@ game_run(char *path)
 
 	game_period = sysarg_args_period ? sysarg_args_period : GAME_PERIOD;
 	tm = sys_gettime();
-	next_tick_us = sys_gettime_us();
+	{
+		U32 now = sys_gettime_us();
+		next_tick_us   = now;
+		next_render_us = now;
+		pace_idx       = 0;
+	}
 	game_state = XRICK;
 
 	/* main loop */
 #ifdef EMSCRIPTEN
-	// callback, fps, simulate_infinite_loop
-	//
-	// "If called on the main browser thread, setting 0 or a negative value as the fps will
-	// use the browser�s requestAnimationFrame mechanism to call the main loop function."
-	// "This is HIGHLY recommended if you are doing rendering, as the browser�s
-	// requestAnimationFrame will make sure you render at a proper smooth rate that lines
-	// up properly with the browser and monitor."
-	//
-	// if fps == -1 then it uses the browser requestAnimatedFrame() period - what if I want
-	// to be slower? is it better to pass a fps here, or to just do nothing (NOT wait!) in
-	// game_loop?
-	// 
+	/*
+	 * Emscripten path is unchanged: defer to requestAnimationFrame and run
+	 * a single tick+present per callback. Browser pacing handles the rest.
+	 */
 	int fps = (24 * GAME_PERIOD) / game_period;
 	emscripten_set_main_loop(game_loop, fps, 1);
 #else
-	while (game_state != EXIT)
 	{
-		game_loop();
+		const pace_pattern_t *pat = &pace_patterns[GAME_PACE_MODE];
+		const U32 render_period_us = 1000000U / GAME_RENDER_FPS;
+
+		while (game_state != EXIT)
+		{
+			U32 now = sys_gettime_us();
+
+			/*
+			 * Advance game logic until caught up to the deadline.
+			 * Cap catch-up at a few ticks per iteration so a long stall
+			 * can't make us spin forever replaying frames.
+			 */
+			int catchup_budget = 4;
+			while ((S32)(now - next_tick_us) >= 0)
+			{
+				game_tick();
+				if (game_state == EXIT) break;
+
+				next_tick_us += pat->tick_us[pace_idx];
+				pace_idx = (pace_idx + 1) % pat->count;
+
+				if (--catchup_budget <= 0) break;
+				now = sys_gettime_us();
+			}
+			if (game_state == EXIT) break;
+
+			now = sys_gettime_us();
+			if (catchup_budget <= 0 && (S32)(now - next_tick_us) >= 0)
+			{
+				/* Still behind after the catch-up budget: resync. */
+				next_tick_us = now + pat->tick_us[pace_idx];
+			}
+
+			/*
+			 * Present. sysvid_update is a no-op when game_rects is NULL
+			 * (no dirty regions), so this naturally throttles itself to
+			 * "present once per game tick" -- the render-fps cap below
+			 * just bounds the worst case.
+			 */
+			if ((S32)(now - next_render_us) >= 0)
+			{
+				sysvid_update(game_rects);
+				draw_STATUSRECT.next = NULL;
+				game_rects = NULL;
+				do { next_render_us += render_period_us; }
+				while ((S32)(now - next_render_us) >= 0);
+			}
+
+			/* Sleep until the earliest of the two deadlines. */
+			U32 deadline = ((S32)(next_tick_us - next_render_us) < 0)
+			               ? next_tick_us : next_render_us;
+			S32 wait_us = (S32)(deadline - sys_gettime_us());
+			if (wait_us > 1500)
+				sys_sleep(wait_us / 1000); /* drop sub-ms remainder; spin handles it */
+		}
 	}
 #endif
 
@@ -220,58 +299,14 @@ static void game_exit(void)
 	data_closepath();
 }
 
-static void game_loop(void)
+/*
+ * One game tick: process events, advance simulation by one frame, mark
+ * dirty rects. Does NOT present -- the desktop loop in game_run handles
+ * presentation on its own schedule. Used directly by the desktop pacer
+ * and (via game_loop below) by the emscripten path.
+ */
+static void game_tick(void)
 {
-	/* timer */
-#ifdef EMSCRIPTEN
-	// nothing - emscripten should invoke the loop every game_period
-	// and we should not sys_sleep in emscripten apps
-	// (see game_run above)
-#else
-	/*
-	 * Absolute-deadline pacer.
-	 *
-	 * The previous version measured "elapsed since last iteration" and
-	 * skipped sleeping when that exceeded game_period. On Windows that
-	 * caused tick spacing to oscillate between ~1 frame and ~5 frames,
-	 * because every coarse-sleep overshoot triggered a no-sleep
-	 * iteration to "catch up". Instead, we keep a fixed deadline that
-	 * advances by exactly game_period each tick, and only resync if we
-	 * have fallen catastrophically behind (e.g. game was paused by the
-	 * OS for several periods).
-	 */
-	{
-		U32 now_us    = sys_gettime_us();
-		U32 period_us = (U32)game_period * 1000U;
-
-		if ((S32)(next_tick_us - now_us) > (S32)period_us * 4 ||
-		    (S32)(now_us - next_tick_us) > (S32)period_us * 4)
-		{
-			/* clock drift / long stall — resync */
-			next_tick_us = now_us + period_us;
-		}
-		else
-		{
-			next_tick_us += period_us;
-		}
-
-		S32 wait_us = (S32)(next_tick_us - sys_gettime_us());
-		if (wait_us > 0)
-			sys_sleep((wait_us + 999) / 1000); /* ms, rounded up */
-
-		tmx = tm; tm = sys_gettime(); tmx = tm - tmx;
-	}
-#endif
-
-	/* video */
-	/*DEBUG*//*game_rects=&draw_SCREENRECT;*//*DEBUG*/
-	// FIXME:??
-	//sysvid_update(fb_updatedRects);
-	sysvid_update(game_rects);
-	draw_STATUSRECT.next = NULL;  /* FIXME freerects should handle this */
-
-	/* sound: nothing to do here, everything is managed via callbacks */
-
 	/* events */
 	if (game_waitevt)
 		sysevt_wait();  /* wait for an event, stop doing anything */
@@ -286,6 +321,24 @@ static void game_loop(void)
 	 * - updates fb_updatedRects
 	 */
 	game_cycle();
+}
+
+static void game_loop(void)
+{
+	/*
+	 * Used as the emscripten requestAnimationFrame callback. The desktop
+	 * loop in game_run() does its own pacing and does NOT call this.
+	 */
+#ifdef EMSCRIPTEN
+	game_tick();
+	sysvid_update(game_rects);
+	draw_STATUSRECT.next = NULL;
+#else
+	/* Desktop path no longer routes through game_loop; left for safety. */
+	game_tick();
+	sysvid_update(game_rects);
+	draw_STATUSRECT.next = NULL;
+#endif
 
 #ifdef EMSCRIPTEN
 	if (game_state == EXIT)
