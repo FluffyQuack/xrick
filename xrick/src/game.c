@@ -107,6 +107,7 @@ hscore_t game_hscores[8] = {
 static U8 save_map_row;
 static game_state_t game_state;
 static U32 tm, tmx;
+static U32 next_tick_us; /* absolute deadline, microseconds */
 
 
 /*
@@ -184,6 +185,7 @@ game_run(char *path)
 
 	game_period = sysarg_args_period ? sysarg_args_period : GAME_PERIOD;
 	tm = sys_gettime();
+	next_tick_us = sys_gettime_us();
 	game_state = XRICK;
 
 	/* main loop */
@@ -191,8 +193,8 @@ game_run(char *path)
 	// callback, fps, simulate_infinite_loop
 	//
 	// "If called on the main browser thread, setting 0 or a negative value as the fps will
-	// use the browser’s requestAnimationFrame mechanism to call the main loop function."
-	// "This is HIGHLY recommended if you are doing rendering, as the browser’s
+	// use the browserï¿½s requestAnimationFrame mechanism to call the main loop function."
+	// "This is HIGHLY recommended if you are doing rendering, as the browserï¿½s
 	// requestAnimationFrame will make sure you render at a proper smooth rate that lines
 	// up properly with the browser and monitor."
 	//
@@ -226,9 +228,39 @@ static void game_loop(void)
 	// and we should not sys_sleep in emscripten apps
 	// (see game_run above)
 #else
-	// sys_gettime() and sys_sleep() use milliseconds
-	tmx = tm; tm = sys_gettime(); tmx = tm - tmx;
-	if (tmx < game_period) sys_sleep(game_period - tmx);
+	/*
+	 * Absolute-deadline pacer.
+	 *
+	 * The previous version measured "elapsed since last iteration" and
+	 * skipped sleeping when that exceeded game_period. On Windows that
+	 * caused tick spacing to oscillate between ~1 frame and ~5 frames,
+	 * because every coarse-sleep overshoot triggered a no-sleep
+	 * iteration to "catch up". Instead, we keep a fixed deadline that
+	 * advances by exactly game_period each tick, and only resync if we
+	 * have fallen catastrophically behind (e.g. game was paused by the
+	 * OS for several periods).
+	 */
+	{
+		U32 now_us    = sys_gettime_us();
+		U32 period_us = (U32)game_period * 1000U;
+
+		if ((S32)(next_tick_us - now_us) > (S32)period_us * 4 ||
+		    (S32)(now_us - next_tick_us) > (S32)period_us * 4)
+		{
+			/* clock drift / long stall â€” resync */
+			next_tick_us = now_us + period_us;
+		}
+		else
+		{
+			next_tick_us += period_us;
+		}
+
+		S32 wait_us = (S32)(next_tick_us - sys_gettime_us());
+		if (wait_us > 0)
+			sys_sleep((wait_us + 999) / 1000); /* ms, rounded up */
+
+		tmx = tm; tm = sys_gettime(); tmx = tm - tmx;
+	}
 #endif
 
 	/* video */

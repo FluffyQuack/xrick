@@ -98,6 +98,7 @@ sys_shutdown(void)
 	sysjoy_shutdown();
 #endif
 	sysvid_shutdown();
+	sys_timing_shutdown();
 
 	SDL_Quit();
 }
