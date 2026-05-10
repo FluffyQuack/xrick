@@ -159,8 +159,8 @@ e_rick_z_action(U8 i)
  * ASM 13BE
  *
  * Co-op: every reference to state and motion bookkeeping that used to be a
- * file-static / global is now ricks[i].*; control_status still reads the
- * global (single P1 input) — Stage 2 introduces per-player control arrays.
+ * file-static / global is now ricks[i].*. Stage 2: each Rick reads its own
+ * input from control_status_p[i], cached into the local `cs` for brevity.
  */
 void
 e_rick_action2(U8 i)
@@ -169,6 +169,12 @@ e_rick_action2(U8 i)
 	U16 x, y;
 	U32 j;
 	ent_t *rent = &R_ENT(i);
+	/*
+	 * Co-op (Stage 2): read this Rick's own input slot. Snapshotted once
+	 * at function entry -- matches the original single-player semantics
+	 * where the global byte didn't change between event polls.
+	 */
+	U8 cs = control_status_p[i];
 
 	R_STRST(i, E_RICK_STSTOP|E_RICK_STSHOOT);
 
@@ -214,7 +220,7 @@ e_rick_action2(U8 i)
 	ricks[i].ylow = j;
 	/* climb? */
 	if ((env1 & MAP_EFLG_CLIMB) &&
-			(control_status & (CONTROL_UP|CONTROL_DOWN))) {
+			(cs & (CONTROL_UP|CONTROL_DOWN))) {
 		ricks[i].offsy = 0x0100;
 		R_STSET(i, E_RICK_STCLIMB);
 		return;
@@ -231,11 +237,11 @@ e_rick_action2(U8 i)
 	*/
 	horiz:
 	/* should move? */
-	if (!(control_status & (CONTROL_LEFT|CONTROL_RIGHT))) {
+	if (!(cs & (CONTROL_LEFT|CONTROL_RIGHT))) {
 		ricks[i].seq = 2; /* no: reset seq and return */
 		return;
 	}
-	if (control_status & CONTROL_LEFT) {  /* move left */
+	if (cs & CONTROL_LEFT) {  /* move left */
 		game_dir = LEFT;
 		if (rent->x < 2) {  /* prev submap (was: x < 0 with signed x) */
 			ricks[i].atExit = TRUE;
@@ -285,7 +291,7 @@ e_rick_action2(U8 i)
 
   /* standing on a super pad? */
   if ((env1 & MAP_EFLG_SPAD) && ricks[i].offsy >= 0X0200) {
-    ricks[i].offsy = (control_status & CONTROL_UP) ? 0xf800 : 0x00fe - ricks[i].offsy;
+    ricks[i].offsy = (cs & CONTROL_UP) ? 0xf800 : 0x00fe - ricks[i].offsy;
 #ifdef ENABLE_SOUND
 	syssnd_play(WAV_PAD, 1);
 #endif
@@ -295,14 +301,14 @@ e_rick_action2(U8 i)
   ricks[i].offsy = 0x0100;  /* reset*/
 
   /* standing. firing ? */
-  if (ricks[i].scrawl || !(control_status & CONTROL_FIRE))
+  if (ricks[i].scrawl || !(cs & CONTROL_FIRE))
     goto firing_not;
 
   /*
    * FIRING
    */
-	if (control_status & (CONTROL_LEFT|CONTROL_RIGHT)) {  /* stop */
-		if (control_status & CONTROL_RIGHT)
+	if (cs & (CONTROL_LEFT|CONTROL_RIGHT)) {  /* stop */
+		if (cs & CONTROL_RIGHT)
 		{
 			game_dir = RIGHT;
 			ricks[i].stop_x = rent->x + 0x17;
@@ -315,7 +321,7 @@ e_rick_action2(U8 i)
 		return;
 	}
 
-  if (control_status == (CONTROL_FIRE|CONTROL_UP)) {  /* bullet */
+  if (cs == (CONTROL_FIRE|CONTROL_UP)) {  /* bullet */
     R_STSET(i, E_RICK_STSHOOT);
     /* not an automatic gun: shoot once only */
     if (ricks[i].trigger)
@@ -339,7 +345,7 @@ e_rick_action2(U8 i)
   ricks[i].trigger = FALSE; /* not shooting means trigger is released */
   ricks[i].seq = 0; /* reset */
 
-  if (control_status == (CONTROL_FIRE|CONTROL_DOWN)) {  /* bomb */
+  if (cs == (CONTROL_FIRE|CONTROL_DOWN)) {  /* bomb */
     /* already a bomb ticking ... that's enough */
     if (E_BOMB_ENT.n)
       return;
@@ -360,7 +366,7 @@ e_rick_action2(U8 i)
    * NOT FIRING
    */
  firing_not:
-  if (control_status & CONTROL_UP) {  /* jump or climb */
+  if (cs & CONTROL_UP) {  /* jump or climb */
     if (env1 & MAP_EFLG_CLIMB) {  /* climb */
       R_STSET(i, E_RICK_STCLIMB);
       return;
@@ -372,9 +378,9 @@ e_rick_action2(U8 i)
 #endif
     goto horiz;
   }
-  if (control_status & CONTROL_DOWN) {  /* crawl or climb */
+  if (cs & CONTROL_DOWN) {  /* crawl or climb */
     if ((env1 & MAP_EFLG_VERT) &&  /* can go down */
-	!(control_status & (CONTROL_LEFT|CONTROL_RIGHT)) &&  /* + not moving horizontaly */
+	!(cs & (CONTROL_LEFT|CONTROL_RIGHT)) &&  /* + not moving horizontaly */
 	(rent->x & 0x1f) < 0x0a) {  /* + aligned -> climb */
       rent->x &= 0xf0;
       rent->x |= 0x04;
@@ -393,17 +399,17 @@ e_rick_action2(U8 i)
 	*/
 	climbing:
 		/* should move? */
-		if (!(control_status & (CONTROL_UP|CONTROL_DOWN|CONTROL_LEFT|CONTROL_RIGHT))) {
+		if (!(cs & (CONTROL_UP|CONTROL_DOWN|CONTROL_LEFT|CONTROL_RIGHT))) {
 			ricks[i].seq = 0; /* no: reset seq and return */
 			return;
 		}
 
-		if (control_status & (CONTROL_UP|CONTROL_DOWN)) {
+		if (cs & (CONTROL_UP|CONTROL_DOWN)) {
 			/* up-down: calc new y and test environment */
-			y = rent->y + ((control_status & CONTROL_UP) ? -0x02 : 0x02);
+			y = rent->y + ((cs & CONTROL_UP) ? -0x02 : 0x02);
 			u_envtest(rent->x, y, R_STTST(i, E_RICK_STCRAWL), &env0, &env1);
 			if (env1 & (MAP_EFLG_SOLID|MAP_EFLG_SPAD|MAP_EFLG_WAYUP) &&
-					!(control_status & CONTROL_UP)) {
+					!(cs & CONTROL_UP)) {
 				/* FIXME what? */
 				R_STRST(i, E_RICK_STCLIMB);
 				return;
@@ -418,9 +424,9 @@ e_rick_action2(U8 i)
 				}
 				if (!(env1 & (MAP_EFLG_VERT|MAP_EFLG_CLIMB))) {
 					/* reached end of climb zone */
-					ricks[i].offsy = (control_status & CONTROL_UP) ? -0x0300 : 0x0100;
+					ricks[i].offsy = (cs & CONTROL_UP) ? -0x0300 : 0x0100;
 #ifdef ENABLE_SOUND
-					if (control_status & CONTROL_UP)
+					if (cs & CONTROL_UP)
 						syssnd_play(WAV_JUMP, 1);
 #endif
 					R_STRST(i, E_RICK_STCLIMB);
@@ -428,9 +434,9 @@ e_rick_action2(U8 i)
 				}
 			}
 		}
-  if (control_status & (CONTROL_LEFT|CONTROL_RIGHT)) {
+  if (cs & (CONTROL_LEFT|CONTROL_RIGHT)) {
     /* left-right: calc new x and test environment */
-    if (control_status & CONTROL_LEFT) {
+    if (cs & CONTROL_LEFT) {
       if (rent->x < 2) {  /* prev submap (was: x < 0 with signed x) */
 	ricks[i].atExit = TRUE;
 	/*6dbd = 0x00;*/
@@ -458,7 +464,7 @@ e_rick_action2(U8 i)
 
     if (env1 & (MAP_EFLG_VERT|MAP_EFLG_CLIMB)) return;
     R_STRST(i, E_RICK_STCLIMB);
-    if (control_status & CONTROL_UP)
+    if (cs & CONTROL_UP)
       ricks[i].offsy = -0x0300;
   }
 }

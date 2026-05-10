@@ -15,15 +15,29 @@
 #define _SYSKBD_H
 
 #include "system.h"
+#include "control.h"  /* CONTROL_PLAYERS */
 
-extern U8 syskbd_up;
-extern U8 syskbd_down;
-extern U8 syskbd_left;
-extern U8 syskbd_right;
+/*
+ * Co-op (Stage 2): per-player movement+fire scancodes. The legacy single-
+ * player Z/X/K/O bindings are gone. Slot 0 is P1.
+ *
+ * P1: arrow keys + Space.
+ * P2: WASD + Left Shift.
+ * P3: IJKL + Return.
+ * P4: 0 -- no controls reserved (slot is still rendered/simulated).
+ *
+ * Pause / end-game / exit / fullscreen / volume / cheat keys remain global
+ * (single binding) and live as separate scalars below.
+ */
+typedef struct {
+	U8 up, down, left, right, fire;
+} player_kbd_t;
+
+extern player_kbd_t syskbd_players[CONTROL_PLAYERS];
+
 extern U8 syskbd_pause;
 extern U8 syskbd_end;
 extern U8 syskbd_xtra;
-extern U8 syskbd_fire;
 
 #endif /* _SYSKBD_H */
 

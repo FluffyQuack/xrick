@@ -13,7 +13,13 @@
 
 #include "control.h"
 
-U8 control_status = 0;
+/*
+ * Co-op (Stage 2): one CONTROL_* byte per player. control_status_p[0] is
+ * P1 (the legacy `control_status` macro maps here). All four slots exist
+ * regardless of rick_count -- inactive slots simply never have bits set.
+ */
+U8 control_status_p[CONTROL_PLAYERS] = { 0, 0, 0, 0 };
+
 U8 control_last = 0;
 U8 control_active = TRUE;
 

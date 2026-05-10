@@ -72,9 +72,21 @@ Goal: structurally support N Ricks without changing gameplay (still 1 active pla
 
 ---
 
-## Stage 2 — Per-player input
+## Stage 2 — Per-player input  *(DONE)*
 
 Goal: deliver one `control_status` per Rick rather than one global.
+
+**Status:** complete. `control_status_p[CONTROL_PLAYERS]` array landed; legacy
+`control_status` is now a macro alias for `control_status_p[0]` so menu/screen/
+devtools/cheat code keeps reading P1 untouched. Per-player keyboard tables
+live in `syskbd_players[]` (P1=arrows+Space, P2=WASD+LShift, P3=IJKL+Return,
+P4=unbound); `processEvent()` dispatches each scancode to its owner slot.
+The `1`/`2`/`3`/`4` hotkeys call `set_rick_count()` which marks Ricks
+active/inactive and snapshots P1's position into the new Rick's save_x/save_y
+for Stage 3 to consume. `e_rick_action2()` now reads its own slot's input via
+a local `cs = control_status_p[i]`. Joystick stays hard-routed to P1. CLI key
+remap (`-keys`) retargets P1's bindings only. Build clean (verified by user).
+Ricks 1-3 are not yet simulated/rendered -- that lands in Stage 3.
 
 ### 2.1 Per-player control state
 - Replace global `control_status` / `control_last` with arrays indexed by player (e.g. `U8 control_status[RICK_MAX];`). Or keep `control_status` as P1's status and add `control_status_p[]` for all — pick one and apply consistently.
