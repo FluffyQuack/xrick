@@ -73,8 +73,6 @@ U8 game_period = 0;
 U8 game_waitevt = FALSE;
 rect_t *game_rects = NULL;
 
-U8 game_dir = 0;
-
 #ifdef GFXST
 hscore_t game_hscores[8] = {
   { 8000, "SIMES@@@@@" },

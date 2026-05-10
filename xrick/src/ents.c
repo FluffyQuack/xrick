@@ -66,6 +66,10 @@ ent_reset(void)
   ent_ents[0].n = 0;
   for (i = 2; ent_ents[i].n != 0xff; i++)
     ent_ents[i].n = 0;
+
+  /* Co-op: clear extra bullets too (Bullet 0 was already cleared above). */
+  for (i = 0; i < RICK_MAX - 1; i++)
+    extra_bullet_ents[i].n = 0;
 }
 
 
@@ -374,6 +378,12 @@ void ents_paintAll()
 		if (extra_rick_ents[i].prev_n && (prev_h || extra_rick_ents[i].prev_s))
 			maps_paintRect(extra_rick_ents[i].prev_x, extra_rick_ents[i].prev_y, 0x20, 0x15);
 	}
+	/* Co-op: erase extra bullets (1..3) the same way. */
+	for (i = 0; i < RICK_MAX - 1; i++)
+	{
+		if (extra_bullet_ents[i].prev_n && (prev_h || extra_bullet_ents[i].prev_s))
+			maps_paintRect(extra_bullet_ents[i].prev_x, extra_bullet_ents[i].prev_y, 0x20, 0x15);
+	}
 
 	/* foreground loop : draw all entities that are visible */
 	for (i = 0; ent_ents[i].n != 0xff; i++)
@@ -391,6 +401,13 @@ void ents_paintAll()
 	{
 		ent_t *e = &extra_rick_ents[i];
 		if (rick_active[i + 1] && e->n && (env_highlight || e->sprite))
+			sprites_paint2(e->sprite, e->x, e->y, e->front);
+	}
+	/* Co-op: foreground draw for extra bullets. */
+	for (i = 0; i < RICK_MAX - 1; i++)
+	{
+		ent_t *e = &extra_bullet_ents[i];
+		if (e->n && (env_highlight || e->sprite))
 			sprites_paint2(e->sprite, e->x, e->y, e->front);
 	}
 
@@ -493,6 +510,47 @@ void ents_paintAll()
 		e->prev_s = e->sprite;
 	}
 
+	/* Co-op: same dirty-rect bookkeeping for extra bullets. */
+	for (i = 0; i < RICK_MAX - 1; i++)
+	{
+		ent_t *e = &extra_bullet_ents[i];
+		U8 active = e->n;
+		U8 was_active = e->prev_n;
+
+		if (was_active && (prev_h || e->prev_s))
+		{
+			if (active && (env_highlight || e->sprite))
+			{
+				dx = abs(e->x - e->prev_x);
+				dy = abs(e->y - e->prev_y);
+				if (dx < 0x20 && dy < 0x16)
+				{
+					ent_addrect((e->prev_x < e->x) ? e->prev_x : e->x,
+					            (e->prev_y < e->y) ? e->prev_y : e->y,
+					            dx + 0x20, dy + 0x15);
+				}
+				else
+				{
+					ent_addrect(e->x, e->y, 0x20, 0x15);
+					ent_addrect(e->prev_x, e->prev_y, 0x20, 0x15);
+				}
+			}
+			else
+			{
+				ent_addrect(e->prev_x, e->prev_y, 0x20, 0x15);
+			}
+		}
+		else if (active && (env_highlight || e->sprite))
+		{
+			ent_addrect(e->x, e->y, 0x20, 0x15);
+		}
+
+		e->prev_x = e->x;
+		e->prev_y = e->y;
+		e->prev_n = e->n;
+		e->prev_s = e->sprite;
+	}
+
 	prev_h = env_highlight;
 }
 
@@ -511,6 +569,8 @@ ent_clprev(void)
 
   /* Co-op (Stage 3): also reset the extra Ricks' dirty-rect state. */
   ricks_extra_clprev();
+  /* Co-op: same for extra bullets. */
+  bullets_extra_clprev();
 }
 
 /*
@@ -582,6 +642,8 @@ ent_action(void)
    * matches the existing scroll/camera logic that keys off Rick 0.
    */
   ricks_extra_action();
+  /* Co-op: tick Bullets 1..3 (Bullet 0 is dispatched via ent_actf[2] above). */
+  bullets_extra_action();
 }
 
 

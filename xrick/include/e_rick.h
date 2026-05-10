@@ -96,7 +96,6 @@ extern void ricks_init(void);
  * per-Rick struct under the hood.
  */
 #define e_rick_state  (ricks[0].state)
-#define e_rick_atExit (ricks[0].atExit)
 #define e_rick_stop_x (ricks[0].stop_x)
 #define e_rick_stop_y (ricks[0].stop_y)
 

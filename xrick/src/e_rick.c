@@ -367,7 +367,6 @@ e_rick_action2(U8 i)
 		return;
 	}
 	if (cs & CONTROL_LEFT) {  /* move left */
-		game_dir = LEFT;
 		ricks[i].dir = LEFT;
 		if (rent->x < 2) {  /* prev submap (was: x < 0 with signed x) */
 			ricks[i].atExit = TRUE;
@@ -377,7 +376,6 @@ e_rick_action2(U8 i)
 		x = rent->x - 2;
 	} else {  /* move right */
 		x = rent->x + 2;
-		game_dir = RIGHT;
 		ricks[i].dir = RIGHT;
 		if (x >= 0xe8) {  /* next submap */
 			ricks[i].atExit = TRUE;
@@ -437,11 +435,9 @@ e_rick_action2(U8 i)
 	if (cs & (CONTROL_LEFT|CONTROL_RIGHT)) {  /* stop */
 		if (cs & CONTROL_RIGHT)
 		{
-			game_dir = RIGHT;
 			ricks[i].dir = RIGHT;
 			ricks[i].stop_x = rent->x + 0x17;
 		} else {
-			game_dir = LEFT;
 			ricks[i].dir = LEFT;
 			ricks[i].stop_x = rent->x;
 		}
@@ -457,17 +453,17 @@ e_rick_action2(U8 i)
       return;
     else
       ricks[i].trigger = TRUE;
-    /* already a bullet in the air ... that's enough */
-    if (E_BULLET_ENT.n)
+    /* already this Rick's bullet in the air ... that's enough */
+    if (bullets_get_ent(i)->n)
       return;
-    /* else use a bullet, if any available */
+    /* else use a bullet, if any available (ammo is shared) */
     if (!env_bullets)
       return;
     if (!env_trainer)
       env_bullets--;
 
     /* initialize bullet */
-    e_bullet_init(rent->x, rent->y);
+    e_bullet_init(rent->x, rent->y, ricks[i].dir, i);
     return;
   }
 

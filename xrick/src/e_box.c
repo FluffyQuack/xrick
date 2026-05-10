@@ -102,14 +102,24 @@ e_box_action(U8 e)
 			/* rick's stick: explode */
 			explode(e);
 		}
-		else if (E_BULLET_ENT.n && u_fboxtest(e, e_bullet_xc, e_bullet_yc)) {
-			/* bullet: explode (and stop bullet) */
-			E_BULLET_ENT.n = 0;
-			explode(e);
-		}
-		else if (e_bomb_lethal && e_bomb_hit(e)) {
-			/* bomb: explode */
-			explode(e);
+		else {
+			/* bullet: explode (and stop the bullet that hit) */
+			U8 bi;
+			U8 hit = FALSE;
+			for (bi = 0; bi < RICK_MAX; bi++) {
+				ent_t *b = bullets_get_ent(bi);
+				if (!b->n) continue;
+				if (u_fboxtest(e, b->x + 0x0c, b->y + 0x05)) {
+					b->n = 0;
+					explode(e);
+					hit = TRUE;
+					break;
+				}
+			}
+			if (!hit && e_bomb_lethal && e_bomb_hit(e)) {
+				/* bomb: explode */
+				explode(e);
+			}
 		}
 	}
 }

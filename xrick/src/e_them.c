@@ -327,13 +327,18 @@ e_them_t1_action(U8 e, U8 type)
     return;
   }
 
-  /* bullet kills them */
-  if (E_BULLET_ENT.n &&
-      u_fboxtest(e, E_BULLET_ENT.x + (e_bullet_offsx < 0 ? 0 : 0x18),
-		 E_BULLET_ENT.y)) {
-    E_BULLET_ENT.n = 0;
-    e_them_gozombie(e);
-    return;
+  /* bullet kills them (any active bullet from any Rick) */
+  {
+    U8 bi;
+    for (bi = 0; bi < RICK_MAX; bi++) {
+      ent_t *b = bullets_get_ent(bi);
+      if (!b->n) continue;
+      if (u_fboxtest(e, b->x + (bullets_get_offsx(bi) < 0 ? 0 : 0x18), b->y)) {
+        b->n = 0;
+        e_them_gozombie(e);
+        return;
+      }
+    }
   }
 
   /* bomb kills them */
@@ -661,13 +666,18 @@ e_them_t2_action(U8 e)
     return;
   }
 
-  /* bullet kills them */
-  if (E_BULLET_ENT.n &&
-      u_fboxtest(e, E_BULLET_ENT.x + (e_bullet_offsx < 0 ? 00 : 0x18),
-		 E_BULLET_ENT.y)) {
-    E_BULLET_ENT.n = 0;
-    e_them_gozombie(e);
-    return;
+  /* bullet kills them (any active bullet from any Rick) */
+  {
+    U8 bi;
+    for (bi = 0; bi < RICK_MAX; bi++) {
+      ent_t *b = bullets_get_ent(bi);
+      if (!b->n) continue;
+      if (u_fboxtest(e, b->x + (bullets_get_offsx(bi) < 0 ? 0 : 0x18), b->y)) {
+        b->n = 0;
+        e_them_gozombie(e);
+        return;
+      }
+    }
   }
 
   /* bomb kills them */
@@ -816,10 +826,15 @@ e_them_t3_action2(U8 e)
       }
 
       if (ent_ents[e].flags & ENT_FLG_TRIGBULLET) {  /* reacts to bullets */
-	/* wake up if triggered by bullet */
-	if (E_BULLET_ENT.n && u_trigbox(e, e_bullet_xc, e_bullet_yc)) {
-	  E_BULLET_ENT.n = 0;
-	  goto wakeup;
+	/* wake up if triggered by any active bullet */
+	U8 bi;
+	for (bi = 0; bi < RICK_MAX; bi++) {
+	  ent_t *b = bullets_get_ent(bi);
+	  if (!b->n) continue;
+	  if (u_trigbox(e, b->x + 0x0c, b->y + 0x05)) {
+	    b->n = 0;
+	    goto wakeup;
+	  }
 	}
       }
 
