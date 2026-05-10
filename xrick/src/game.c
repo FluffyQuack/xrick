@@ -109,6 +109,14 @@ static game_state_t game_state;
 static U32 tm, tmx;
 
 /*
+ * Co-op: index of the Rick that drove the current submap-exit transition.
+ * Set when leaving CTRL_RICK with any Rick's atExit flag raised; consumed by
+ * NEXT_SUBMAP (passed to map_chain) and INIT_SUBMAP (passed to ricks_spawn_at
+ * so everyone snaps to the triggering Rick's new-submap edge position).
+ */
+static U8 exit_trigger;
+
+/*
  * Pace patterns. Each entry is a game-frame duration in microseconds; the
  * pattern is cycled. Decoupled from render rate (see GAME_RENDER_FPS).
  */
@@ -487,7 +495,7 @@ static void game_cycle(void)
 				 * spot on map entry. Must run before game_save() so the
 				 * snapshot used by restart() captures the shared spawn.
 				 */
-				ricks_spawn_at_p1();
+				ricks_spawn_at(0);
 				game_save();
 				fb_clear();                 /* clear buffer */
 				//ent_clprev();
@@ -612,18 +620,18 @@ static void game_cycle(void)
 				/*
 				 * Co-op: lose a life only when *every* active Rick is dead.
 				 * With rick_count == 1 this collapses to the original
-				 * single-player check. e_rick_atExit still keys off Rick 0
-				 * (the camera-follower / P1).
+				 * single-player check. Any active Rick can drive a submap
+				 * exit -- the first one we find with atExit set becomes the
+				 * trigger for map_chain / ricks_spawn_at.
 				 */
 				U8 r;
 				U8 all_dead = TRUE;
+				U8 exiter = RICK_MAX; /* sentinel: no Rick exiting */
 				for (r = 0; r < RICK_MAX; r++)
 				{
-					if (rick_active[r] && !R_STTST(r, E_RICK_STDEAD))
-					{
-						all_dead = FALSE;
-						break;
-					}
+					if (!rick_active[r]) continue;
+					if (!R_STTST(r, E_RICK_STDEAD)) all_dead = FALSE;
+					if (exiter == RICK_MAX && ricks[r].atExit) exiter = r;
 				}
 
 			if (all_dead)
@@ -638,10 +646,10 @@ static void game_cycle(void)
 				}
 			}
 			else
-			if (e_rick_atExit) /* rick is exiting the submap, must chain to next submap */
+			if (exiter != RICK_MAX) /* a rick is exiting the submap, must chain */
 			{
-				//	e_rick_enterMap(); // akn
-				e_rick_atExit = FALSE;
+				ricks[exiter].atExit = FALSE;
+				exit_trigger = exiter;
 				game_state = NEXT_SUBMAP;
 			}
 			else
@@ -688,7 +696,7 @@ static void game_cycle(void)
 
 		case NEXT_SUBMAP:
 
-			if (map_chain())
+			if (map_chain(exit_trigger))
 			{
 				/* next submap, now initialize */
 				game_state = INIT_SUBMAP;
@@ -719,6 +727,10 @@ static void game_cycle(void)
 			ent_ents[1].y = map_maps[env_map].y;
 			map_frow = (U8)map_maps[env_map].row;
 			env_submap = map_maps[env_map].submap;
+			/* Fresh map start: Rick 0 owns the spawn from map_maps[], so the
+			 * subsequent ricks_spawn_at(exit_trigger) in INIT_SUBMAP must
+			 * anchor on Rick 0, not on the (now stale) submap-edge trigger. */
+			exit_trigger = 0;
 			game_state = FADEOUT__MAP_INTRO;
 			break;
 
@@ -737,8 +749,14 @@ static void game_cycle(void)
 		case INIT_SUBMAP:
 
 			map_init();                     /* initialize the map */
-			/* Co-op (Stage 3): spawn extras at Rick 0 before game_save snapshots. */
-			ricks_spawn_at_p1();
+			/*
+			 * Co-op: anchor all Ricks on whichever one triggered the exit.
+			 * Their x has been wrapped to the new submap's entry edge by
+			 * e_rick_action2; non-trigger Ricks (including Rick 0 if a
+			 * non-P1 player drove the exit) snap to that position.
+			 */
+			ricks_spawn_at(exit_trigger);
+			exit_trigger = 0;
 			game_save();                        /* save data in case of a restart */
 			fb_clear();
 			ent_clprev();                   /* cleanup entities */
@@ -894,7 +912,7 @@ init(void)
    * only Rick 0 is active, so this is a no-op today; it becomes
    * load-bearing as soon as the player presses 2/3/4 mid-game.
    */
-  ricks_spawn_at_p1();
+  ricks_spawn_at(0);
 
   map_resetMarks();
 }

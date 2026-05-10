@@ -42,6 +42,7 @@
 #include "e_sbonus.h"
 #include "tiles.h"
 #include "fb.h"
+#include "e_rick.h"
 
 /*
  * global vars
@@ -155,9 +156,11 @@ map_eflg_expand(U8 offs)
  FIXME should return next submap number, or 0.
  */
 U8
-map_chain(void)
+map_chain(U8 trigger)
 {
   U16 c, t;
+  U8 trig_dir = ricks[trigger].dir;
+  U16 trig_y = ricks_get_ent(trigger)->y;
 
   env_changeSubmap = 0; /* FIXME but not used?! */
   e_sbonus_counting = FALSE; /* FIXME what? move this out of here!! */
@@ -169,25 +172,26 @@ map_chain(void)
   IFDEBUG_MAPS(
     sys_printf("xrick/maps: chain submap=%#04x frow=%#04x .connect=%#04x %s\n",
 	       env_submap, map_frow, c,
-	       (game_dir == LEFT ? "-> left" : "-> right"));
+	       (trig_dir == LEFT ? "-> left" : "-> right"));
   );
 
   /*
    * look for the first connector with compatible row number. if none
-   * found, then panic
+   * found, then panic. The triggering Rick's dir/y picks the connector --
+   * any Rick can drive a submap exit in co-op, not just P1.
    */
   for (c = map_submaps[env_submap].connect; ; c++) {
     if (map_connect[c].dir == 0xff)
       sys_panic("(map_chain) can not find connector\n");
-    if (map_connect[c].dir != game_dir) continue;
-    t = (ent_ents[1].y >> 3) + map_frow - map_connect[c].rowout;
+    if (map_connect[c].dir != trig_dir) continue;
+    t = (trig_y >> 3) + map_frow - map_connect[c].rowout;
     if (t < 3) break;
   }
 
   /* got it */
   IFDEBUG_MAPS(
     sys_printf("xrick/maps: chain frow=%#04x y=%#06x\n",
-	       map_frow, ent_ents[1].y);
+	       map_frow, trig_y);
     sys_printf("xrick/maps: chain connect=%#04x rowout=%#04x - ",
 	       c, map_connect[c].rowout);
     );

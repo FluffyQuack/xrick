@@ -123,13 +123,15 @@ extern ent_t *ricks_get_ent(U8 i);
  * - ricks_extra_clprev: called from ent_clprev() to reset prev_n.
  * - ricks_extra_scroll: called from scroll_up/scroll_down to keep extras
  *   tracking the scrolled world.
- * - ricks_spawn_at_p1: places every active extra Rick at Rick 0's current
+ * - ricks_spawn_at: places every other active Rick at anchor Rick's current
  *   (x,y) with a fresh state. Called on every submap entry / restart.
+ *   The anchor is whichever Rick drove the transition (P1 for fresh starts,
+ *   the exit-triggering Rick for submap chains).
  */
 extern void ricks_extra_action(void);
 extern void ricks_extra_clprev(void);
 extern void ricks_extra_scroll(S16 dy);
-extern void ricks_spawn_at_p1(void);
+extern void ricks_spawn_at(U8 anchor);
 
 #endif
 

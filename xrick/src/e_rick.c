@@ -80,31 +80,47 @@ ricks_init(void)
 
 
 /*
- * Co-op (Stage 3): place every active extra Rick at Rick 0's current
+ * Co-op (Stage 3): place every other active Rick at anchor Rick's current
  * position with a fresh state. Used when loading / restarting a submap so
  * all Ricks spawn together (per the locked-in design in COOP_ROADMAP.md).
+ *
+ * For fresh map entries the anchor is Rick 0. For submap chains the anchor
+ * is whichever Rick walked off the edge -- their x has already been wrapped
+ * to the new submap's entry edge by e_rick_action2, so anchoring on them
+ * places everyone at the correct spot in the new submap. When anchor != 0,
+ * Rick 0 also gets snapped to the anchor (the camera follows Rick 0, so
+ * this is what makes the camera enter the new submap).
  */
 void
-ricks_spawn_at_p1(void)
+ricks_spawn_at(U8 anchor)
 {
 	U8 i;
-	ent_t *p1 = &ent_ents[E_RICK_NO];
+	ent_t *src = ricks_get_ent(anchor);
+	U16 ax = src->x;
+	U16 ay = src->y;
 
-	for (i = 1; i < RICK_MAX; i++)
+	for (i = 0; i < RICK_MAX; i++)
 	{
-		ent_t *e = &extra_rick_ents[i - 1];
+		ent_t *e;
+
+		if (i == anchor) continue;
+
+		e = ricks_get_ent(i);
 
 		if (!rick_active[i])
 		{
 			/* Inactive Ricks must not draw or collide. */
-			e->n = 0;
-			e->sprite = 0;
+			if (i != 0)
+			{
+				e->n = 0;
+				e->sprite = 0;
+			}
 			continue;
 		}
 
 		/* Mirror the per-frame fields init() sets up for ent_ents[1]. */
-		e->x = p1->x;
-		e->y = p1->y;
+		e->x = ax;
+		e->y = ay;
 		e->w = 0x18;
 		e->h = 0x15;
 		e->n = 0x01;
