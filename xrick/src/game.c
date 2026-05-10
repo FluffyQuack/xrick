@@ -602,9 +602,25 @@ static void game_cycle(void)
 
 
 		case CTRL_RICK:
+			{
+				/*
+				 * Co-op: lose a life only when *every* active Rick is dead.
+				 * With rick_count == 1 this collapses to the original
+				 * single-player check. e_rick_atExit still keys off Rick 0
+				 * (the camera-follower / P1).
+				 */
+				U8 r;
+				U8 all_dead = TRUE;
+				for (r = 0; r < RICK_MAX; r++)
+				{
+					if (rick_active[r] && !R_STTST(r, E_RICK_STDEAD))
+					{
+						all_dead = FALSE;
+						break;
+					}
+				}
 
-			// FIXME if (e_rick_isDead)
-			if E_RICK_STTST(E_RICK_STDEAD) /* rick is dead */
+			if (all_dead)
 			{
 				if (env_trainer || --env_lives)
 				{
@@ -615,7 +631,7 @@ static void game_cycle(void)
 					game_state = FADEOUT__GAMEOVER;
 				}
 			}
-			else 
+			else
 			if (e_rick_atExit) /* rick is exiting the submap, must chain to next submap */
 			{
 				//	e_rick_enterMap(); // akn
@@ -625,6 +641,7 @@ static void game_cycle(void)
 			else
 			{
 				game_state = PAINT;
+			}
 			}
 			break;
 
@@ -823,7 +840,11 @@ init(void)
 {
   U8 i;
 
-  E_RICK_STRST(0xff);
+  /*
+   * Reset all per-Rick state. Rick 0 stays active; Ricks 1-3 are
+   * inactive until Stage 2 wires up the player-count keys.
+   */
+  ricks_init();
 
   env_lives = 6;
   env_bombs = 6;
@@ -894,14 +915,23 @@ static void game_paintEntities()
  */
 static void restart(void)
 {
-	E_RICK_STRST(E_RICK_STDEAD|E_RICK_STZOMBIE); // should be part of e_rick
+	U8 r;
+
+	/* clear DEAD/ZOMBIE for every active Rick (collapses to Rick 0 at rick_count == 1) */
+	for (r = 0; r < RICK_MAX; r++)
+		if (rick_active[r])
+			R_STRST(r, E_RICK_STDEAD|E_RICK_STZOMBIE);
 
 	env_bullets = 6;
 	env_bombs = 6;
 
 	ent_ents[1].n = 1; // FIXMEwhy??
 
-	e_rick_restore(); // FIXME that should restore the state ?!!?
+	/* restore the spawn position of every active Rick from its saved state */
+	for (r = 0; r < RICK_MAX; r++)
+		if (rick_active[r])
+			e_rick_restore(r);
+
 	map_frow = save_map_row;
 
 	map_init(); // see INIT_MAP check that everything is OK here
@@ -922,7 +952,11 @@ static void restart(void)
  */
 static void game_save(void)
 {
-  e_rick_save();
+  U8 r;
+  /* snapshot spawn for every active Rick — at rick_count == 1 only Rick 0 */
+  for (r = 0; r < RICK_MAX; r++)
+    if (rick_active[r])
+      e_rick_save(r);
   save_map_row = map_frow;
 }
 

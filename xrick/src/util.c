@@ -62,7 +62,7 @@ u_boxtest(U8 e1, U8 e2)
 {
   /* rick is special (may be crawling) */
   if (e1 == E_RICK_NO)
-    return e_rick_boxtest(e2);
+    return e_rick_boxtest(0, e2); /* Rick 0 (P1) — only Rick in ent_ents */
 
   /*
    * entity 1: x+0x05 to x+0x011, y to y+0x14

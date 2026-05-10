@@ -66,7 +66,7 @@ e_box_action(U8 e)
 		/*
 		 * not lethal: check to see if triggered
 		 */
-		if (e_rick_boxtest(e)) {
+		if (e_rick_boxtest(0, e)) { /* Stage 3 will iterate all active Ricks */
 			/* rick: collect bombs or bullets and stop */
 #ifdef ENABLE_SOUND
 			syssnd_play(WAV_BOX, 1);

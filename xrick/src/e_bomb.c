@@ -138,7 +138,7 @@ e_bomb_action(UNUSED(U8 e))
 		e_bomb_yc = E_BOMB_ENT.y + 0x000A;
 		e_bomb_lethal = TRUE;
 		if (e_bomb_hit(E_RICK_NO))
-			e_rick_gozombie();
+			e_rick_gozombie(0); /* Stage 3 will iterate all active Ricks */
 	}
 	else
 	{
@@ -153,7 +153,7 @@ e_bomb_action(UNUSED(U8 e))
 #endif
 		/* exploding, hence lethal */
 		if (e_bomb_hit(E_RICK_NO))
-			e_rick_gozombie();
+			e_rick_gozombie(0); /* Stage 3 will iterate all active Ricks */
 	}
 }
 

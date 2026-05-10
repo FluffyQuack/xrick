@@ -247,8 +247,8 @@ e_them_t1_action(U8 e, U8 type)
     ent_ents[e].latency = 0x14;
 
   /* they kill rick */
-  if (e_rick_boxtest(e))
-    e_rick_gozombie();
+  if (e_rick_boxtest(0, e))
+    e_rick_gozombie(0); /* Stage 3 will iterate all active Ricks */
 }
 
 
@@ -520,8 +520,8 @@ e_them_t2_action(U8 e)
   e_them_t2_action2(e);
 
   /* they kill rick */
-  if (e_rick_boxtest(e))
-    e_rick_gozombie();
+  if (e_rick_boxtest(0, e))
+    e_rick_gozombie(0); /* Stage 3 will iterate all active Ricks */
 
   /* lethal entities kill them */
   if (u_themtest(e)) {
@@ -721,8 +721,8 @@ e_them_t3_action(U8 e)
 
   /* if lethal, can kill rick */
   if ((ent_ents[e].n & ENT_LETHAL) &&
-      !E_RICK_STTST(E_RICK_STZOMBIE) && e_rick_boxtest(e)) {  /* CALL 1130 */
-    e_rick_gozombie();
+      !E_RICK_STTST(E_RICK_STZOMBIE) && e_rick_boxtest(0, e)) {  /* CALL 1130 */
+    e_rick_gozombie(0); /* Stage 3 will iterate all active Ricks */
   }
 }
 

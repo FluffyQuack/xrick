@@ -34,7 +34,7 @@ e_bonus_action(U8 e)
 #define seq c1
 
   if (ent_ents[e].seq == 0) {
-    if (e_rick_boxtest(e)) {
+    if (e_rick_boxtest(0, e)) { /* Stage 3 will iterate all active Ricks */
       env_score += 500;
 #ifdef ENABLE_SOUND
       syssnd_play(WAV_BONUS, 1);

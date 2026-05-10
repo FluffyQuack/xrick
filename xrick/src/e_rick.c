@@ -26,30 +26,43 @@
 #include "maps.h"
 #include "util.h"
 
+#include <string.h>
+
 
 /*
- * public vars
+ * Co-op refactor: every per-Rick variable that used to be a global or
+ * file-static now lives inside ricks[i]. Rick 0 corresponds to the entity
+ * stored at ent_ents[1] (E_RICK_NO), preserving the original slot map.
+ * Stage 1 keeps rick_count == 1 so behavior is byte-for-byte identical to
+ * the single-player version; the extra slots get wired up in Stage 2/3.
  */
-U16 e_rick_stop_x = 0;
-U16 e_rick_stop_y = 0;
-U8 e_rick_state = 0;
-U8 e_rick_atExit = FALSE; // TRUE when rick is exiting the submap
+rick_t ricks[RICK_MAX];
+U8 rick_count = 1;
+U8 rick_active[RICK_MAX] = { TRUE, FALSE, FALSE, FALSE };
 
-/*
- * local vars
- */
-static U8 scrawl;
+/* Convenience: the entity for Rick i. */
+#define R_ENT(i) ent_ents[ricks[(i)].ent_slot]
 
-static U8 trigger = FALSE;
 
-static S8 offsx;
-static U8 ylow;
-static S16 offsy;
+void
+ricks_init(void)
+{
+	U8 i;
 
-static U8 seq;
-
-static U8 save_crawl;
-static U16 save_x, save_y;
+	memset(ricks, 0, sizeof(ricks));
+	rick_count = 1;
+	for (i = 0; i < RICK_MAX; i++)
+	{
+		rick_active[i] = (i == 0) ? TRUE : FALSE;
+		/*
+		 * ent_slot: Rick 0 uses the existing ent_ents[1] slot (E_RICK_NO).
+		 * Ricks 1-3 will be backed by a separate extra_rick_ents array
+		 * that is added in Stage 1.2 / Stage 3. For now leave them at 0
+		 * (sentinel) — they aren't simulated yet.
+		 */
+		ricks[i].ent_slot = (i == 0) ? E_RICK_NO : 0;
+	}
+}
 
 
 /*
@@ -57,22 +70,24 @@ static U16 save_x, save_y;
  *
  * ASM 113E (based on)
  *
- * e: entity to test against (corresponds to SI in asm code -- here DI
- *    is assumed to point to rick).
+ * i: rick index to test against (corresponds to DI in asm code).
+ * e: entity to test against (corresponds to SI in asm code).
  * ret: TRUE/intersect, FALSE/not.
  */
 U8
-e_rick_boxtest(U8 e)
+e_rick_boxtest(U8 i, U8 e)
 {
+	ent_t *rent = &R_ENT(i);
+
 	/*
 	 * rick: x+0x05 to x+0x11, y+[0x08 if rick's crawling] to y+0x14
 	 * entity: x to x+w, y to y+h
 	 */
 
-	if (E_RICK_ENT.x + 0x11 < ent_ents[e].x ||
-		E_RICK_ENT.x + 0x05 > ent_ents[e].x + ent_ents[e].w ||
-		E_RICK_ENT.y + 0x14 < ent_ents[e].y ||
-		E_RICK_ENT.y + (E_RICK_STTST(E_RICK_STCRAWL) ? 0x08 : 0x00) > ent_ents[e].y + ent_ents[e].h - 1)
+	if (rent->x + 0x11 < ent_ents[e].x ||
+		rent->x + 0x05 > ent_ents[e].x + ent_ents[e].w ||
+		rent->y + 0x14 < ent_ents[e].y ||
+		rent->y + (R_STTST(i, E_RICK_STCRAWL) ? 0x08 : 0x00) > ent_ents[e].y + ent_ents[e].h - 1)
 		return FALSE;
 	else
 		return TRUE;
@@ -87,22 +102,25 @@ e_rick_boxtest(U8 e)
  * ASM 1851
  */
 void
-e_rick_gozombie(void)
+e_rick_gozombie(U8 i)
 {
+	ent_t *rent;
+
 	if (env_invicible) return;
 
 	/* already zombie? */
-	if E_RICK_STTST(E_RICK_STZOMBIE) return;
+	if (R_STTST(i, E_RICK_STZOMBIE)) return;
 
 #ifdef ENABLE_SOUND
 	syssnd_play(WAV_DIE, 1);
 #endif
 
-	E_RICK_STSET(E_RICK_STZOMBIE);
-	offsy = -0x0400;
-	offsx = (E_RICK_ENT.x > 0x80 ? -3 : +3);
-	ylow = 0;
-	E_RICK_ENT.front = TRUE;
+	rent = &R_ENT(i);
+	R_STSET(i, E_RICK_STZOMBIE);
+	ricks[i].offsy = -0x0400;
+	ricks[i].offsx = (rent->x > 0x80 ? -3 : +3);
+	ricks[i].ylow = 0;
+	rent->front = TRUE;
 }
 
 
@@ -112,25 +130,26 @@ e_rick_gozombie(void)
  * ASM 17DC
  */
 static void
-e_rick_z_action(void)
+e_rick_z_action(U8 i)
 {
-	U32 i;
+	U32 j;
+	ent_t *rent = &R_ENT(i);
 
 	/* sprite */
-	E_RICK_ENT.sprite = (E_RICK_ENT.x & 0x04) ? 0x1A : 0x19;
+	rent->sprite = (rent->x & 0x04) ? 0x1A : 0x19;
 
 	/* x */
-	E_RICK_ENT.x += offsx;
+	rent->x += ricks[i].offsx;
 
 	/* y */
-	i = (E_RICK_ENT.y << 8) + offsy + ylow;
-	E_RICK_ENT.y = i >> 8;
-	offsy += 0x80;
-	ylow = i;
+	j = (rent->y << 8) + ricks[i].offsy + ricks[i].ylow;
+	rent->y = j >> 8;
+	ricks[i].offsy += 0x80;
+	ricks[i].ylow = j;
 
 	/* dead when out of screen */
-	if (E_RICK_ENT.y < 0 || E_RICK_ENT.y > 0x0140)
-		E_RICK_STSET(E_RICK_STDEAD);
+	if (rent->y < 0 || rent->y > 0x0140)
+		R_STSET(i, E_RICK_STDEAD);
 }
 
 
@@ -138,40 +157,45 @@ e_rick_z_action(void)
  * Action sub-function for e_rick.
  *
  * ASM 13BE
+ *
+ * Co-op: every reference to state and motion bookkeeping that used to be a
+ * file-static / global is now ricks[i].*; control_status still reads the
+ * global (single P1 input) — Stage 2 introduces per-player control arrays.
  */
 void
-e_rick_action2(void)
+e_rick_action2(U8 i)
 {
 	U8 env0, env1;
 	U16 x, y;
-	U32 i;
+	U32 j;
+	ent_t *rent = &R_ENT(i);
 
-	E_RICK_STRST(E_RICK_STSTOP|E_RICK_STSHOOT);
+	R_STRST(i, E_RICK_STSTOP|E_RICK_STSHOOT);
 
 	/* if zombie, run dedicated function and return */
-	if E_RICK_STTST(E_RICK_STZOMBIE) {
-		e_rick_z_action();
+	if (R_STTST(i, E_RICK_STZOMBIE)) {
+		e_rick_z_action(i);
 		return;
 	}
 
 	/* climbing? */
-	if E_RICK_STTST(E_RICK_STCLIMB)
+	if (R_STTST(i, E_RICK_STCLIMB))
 		goto climbing;
 
 	/*
 	* NOT CLIMBING
 	*/
-	E_RICK_STRST(E_RICK_STJUMP);
+	R_STRST(i, E_RICK_STJUMP);
 	/* calc y */
-	i = (E_RICK_ENT.y << 8) + offsy + ylow;
-	y = i >> 8;
+	j = (rent->y << 8) + ricks[i].offsy + ricks[i].ylow;
+	y = j >> 8;
 	/* test environment */
-	u_envtest(E_RICK_ENT.x, y, E_RICK_STTST(E_RICK_STCRAWL), &env0, &env1);
+	u_envtest(rent->x, y, R_STTST(i, E_RICK_STCRAWL), &env0, &env1);
 	/* stand up, if possible */
-	if (E_RICK_STTST(E_RICK_STCRAWL) && !env0)
-		E_RICK_STRST(E_RICK_STCRAWL);
+	if (R_STTST(i, E_RICK_STCRAWL) && !env0)
+		R_STRST(i, E_RICK_STCRAWL);
 	/* can move vertically? */
-	if (env1 & (offsy < 0 ?
+	if (env1 & (ricks[i].offsy < 0 ?
 					MAP_EFLG_VERT|MAP_EFLG_SOLID|MAP_EFLG_SPAD :
 					MAP_EFLG_VERT|MAP_EFLG_SOLID|MAP_EFLG_SPAD|MAP_EFLG_WAYUP))
 		goto vert_not;
@@ -179,27 +203,27 @@ e_rick_action2(void)
 	/*
 	* VERTICAL MOVE
 	*/
-	E_RICK_STSET(E_RICK_STJUMP);
+	R_STSET(i, E_RICK_STJUMP);
 	/* killed? */
 	if (env1 & MAP_EFLG_LETHAL) {
-		e_rick_gozombie();
+		e_rick_gozombie(i);
 		return;
 	}
 	/* save */
-	E_RICK_ENT.y = y;
-	ylow = i;
+	rent->y = y;
+	ricks[i].ylow = j;
 	/* climb? */
 	if ((env1 & MAP_EFLG_CLIMB) &&
 			(control_status & (CONTROL_UP|CONTROL_DOWN))) {
-		offsy = 0x0100;
-		E_RICK_STSET(E_RICK_STCLIMB);
+		ricks[i].offsy = 0x0100;
+		R_STSET(i, E_RICK_STCLIMB);
 		return;
 	}
 	/* fall */
-	offsy += 0x0080;
-	if (offsy > 0x0800) {
-		offsy = 0x0800;
-		ylow = 0;
+	ricks[i].offsy += 0x0080;
+	if (ricks[i].offsy > 0x0800) {
+		ricks[i].offsy = 0x0800;
+		ricks[i].ylow = 0;
 	}
 
 	/*
@@ -208,34 +232,34 @@ e_rick_action2(void)
 	horiz:
 	/* should move? */
 	if (!(control_status & (CONTROL_LEFT|CONTROL_RIGHT))) {
-		seq = 2; /* no: reset seq and return */
+		ricks[i].seq = 2; /* no: reset seq and return */
 		return;
 	}
 	if (control_status & CONTROL_LEFT) {  /* move left */
 		game_dir = LEFT;
-		if (E_RICK_ENT.x < 2) {  /* prev submap (was: x < 0 with signed x) */
-			e_rick_atExit = TRUE;
-			E_RICK_ENT.x = 0xe2;
+		if (rent->x < 2) {  /* prev submap (was: x < 0 with signed x) */
+			ricks[i].atExit = TRUE;
+			rent->x = 0xe2;
 			return;
 		}
-		x = E_RICK_ENT.x - 2;
+		x = rent->x - 2;
 	} else {  /* move right */
-		x = E_RICK_ENT.x + 2;
+		x = rent->x + 2;
 		game_dir = RIGHT;
 		if (x >= 0xe8) {  /* next submap */
-			e_rick_atExit = TRUE;
-			E_RICK_ENT.x = 0x04;
+			ricks[i].atExit = TRUE;
+			rent->x = 0x04;
 			return;
 		}
 	}
 
 	/* still within this map: test environment */
-	u_envtest(x, E_RICK_ENT.y, E_RICK_STTST(E_RICK_STCRAWL), &env0, &env1);
+	u_envtest(x, rent->y, R_STTST(i, E_RICK_STCRAWL), &env0, &env1);
 
 	/* save x-position if it is possible to move */
 	if (!(env1 & (MAP_EFLG_SOLID|MAP_EFLG_SPAD|MAP_EFLG_WAYUP))) {
-		E_RICK_ENT.x = x;
-		if (env1 & MAP_EFLG_LETHAL) e_rick_gozombie();
+		rent->x = x;
+		if (env1 & MAP_EFLG_LETHAL) e_rick_gozombie(i);
 	}
 
 	/* end */
@@ -245,33 +269,33 @@ e_rick_action2(void)
    * NO VERTICAL MOVE
    */
  vert_not:
-  if (offsy < 0) {
+  if (ricks[i].offsy < 0) {
     /* not climbing + trying to go _up_ not possible -> hit the roof */
-    E_RICK_STSET(E_RICK_STJUMP);  /* fall back to the ground */
-    E_RICK_ENT.y &= 0xF8;
-    offsy = 0;
-    ylow = 0;
+    R_STSET(i, E_RICK_STJUMP);  /* fall back to the ground */
+    rent->y &= 0xF8;
+    ricks[i].offsy = 0;
+    ricks[i].ylow = 0;
     goto horiz;
   }
   /* else: not climbing + trying to go _down_ not possible -> standing */
   /* align to ground */
-  E_RICK_ENT.y &= 0xF8;
-  E_RICK_ENT.y |= 0x03;
-  ylow = 0;
+  rent->y &= 0xF8;
+  rent->y |= 0x03;
+  ricks[i].ylow = 0;
 
   /* standing on a super pad? */
-  if ((env1 & MAP_EFLG_SPAD) && offsy >= 0X0200) {
-    offsy = (control_status & CONTROL_UP) ? 0xf800 : 0x00fe - offsy;
+  if ((env1 & MAP_EFLG_SPAD) && ricks[i].offsy >= 0X0200) {
+    ricks[i].offsy = (control_status & CONTROL_UP) ? 0xf800 : 0x00fe - ricks[i].offsy;
 #ifdef ENABLE_SOUND
 	syssnd_play(WAV_PAD, 1);
 #endif
     goto horiz;
   }
 
-  offsy = 0x0100;  /* reset*/
+  ricks[i].offsy = 0x0100;  /* reset*/
 
   /* standing. firing ? */
-  if (scrawl || !(control_status & CONTROL_FIRE))
+  if (ricks[i].scrawl || !(control_status & CONTROL_FIRE))
     goto firing_not;
 
   /*
@@ -281,23 +305,23 @@ e_rick_action2(void)
 		if (control_status & CONTROL_RIGHT)
 		{
 			game_dir = RIGHT;
-			e_rick_stop_x = E_RICK_ENT.x + 0x17;
+			ricks[i].stop_x = rent->x + 0x17;
 		} else {
 			game_dir = LEFT;
-			e_rick_stop_x = E_RICK_ENT.x;
+			ricks[i].stop_x = rent->x;
 		}
-		e_rick_stop_y = E_RICK_ENT.y + 0x000E;
-		E_RICK_STSET(E_RICK_STSTOP);
+		ricks[i].stop_y = rent->y + 0x000E;
+		R_STSET(i, E_RICK_STSTOP);
 		return;
 	}
 
   if (control_status == (CONTROL_FIRE|CONTROL_UP)) {  /* bullet */
-    E_RICK_STSET(E_RICK_STSHOOT);
+    R_STSET(i, E_RICK_STSHOOT);
     /* not an automatic gun: shoot once only */
-    if (trigger)
+    if (ricks[i].trigger)
       return;
     else
-      trigger = TRUE;
+      ricks[i].trigger = TRUE;
     /* already a bullet in the air ... that's enough */
     if (E_BULLET_ENT.n)
       return;
@@ -308,12 +332,12 @@ e_rick_action2(void)
       env_bullets--;
 
     /* initialize bullet */
-    e_bullet_init(E_RICK_ENT.x, E_RICK_ENT.y);
+    e_bullet_init(rent->x, rent->y);
     return;
   }
 
-  trigger = FALSE; /* not shooting means trigger is released */
-  seq = 0; /* reset */
+  ricks[i].trigger = FALSE; /* not shooting means trigger is released */
+  ricks[i].seq = 0; /* reset */
 
   if (control_status == (CONTROL_FIRE|CONTROL_DOWN)) {  /* bomb */
     /* already a bomb ticking ... that's enough */
@@ -326,7 +350,7 @@ e_rick_action2(void)
       env_bombs--;
 
     /* initialize bomb */
-    e_bomb_init(E_RICK_ENT.x, E_RICK_ENT.y);
+    e_bomb_init(rent->x, rent->y);
     return;
   }
 
@@ -338,11 +362,11 @@ e_rick_action2(void)
  firing_not:
   if (control_status & CONTROL_UP) {  /* jump or climb */
     if (env1 & MAP_EFLG_CLIMB) {  /* climb */
-      E_RICK_STSET(E_RICK_STCLIMB);
+      R_STSET(i, E_RICK_STCLIMB);
       return;
     }
-    offsy = -0x0580;  /* jump */
-    ylow = 0;
+    ricks[i].offsy = -0x0580;  /* jump */
+    ricks[i].ylow = 0;
 #ifdef ENABLE_SOUND
     syssnd_play(WAV_JUMP, 1);
 #endif
@@ -351,13 +375,13 @@ e_rick_action2(void)
   if (control_status & CONTROL_DOWN) {  /* crawl or climb */
     if ((env1 & MAP_EFLG_VERT) &&  /* can go down */
 	!(control_status & (CONTROL_LEFT|CONTROL_RIGHT)) &&  /* + not moving horizontaly */
-	(E_RICK_ENT.x & 0x1f) < 0x0a) {  /* + aligned -> climb */
-      E_RICK_ENT.x &= 0xf0;
-      E_RICK_ENT.x |= 0x04;
-      E_RICK_STSET(E_RICK_STCLIMB);
+	(rent->x & 0x1f) < 0x0a) {  /* + aligned -> climb */
+      rent->x &= 0xf0;
+      rent->x |= 0x04;
+      R_STSET(i, E_RICK_STCLIMB);
     }
     else {  /* crawl */
-      E_RICK_STSET(E_RICK_STCRAWL);
+      R_STSET(i, E_RICK_STCRAWL);
       goto horiz;
     }
 
@@ -370,36 +394,36 @@ e_rick_action2(void)
 	climbing:
 		/* should move? */
 		if (!(control_status & (CONTROL_UP|CONTROL_DOWN|CONTROL_LEFT|CONTROL_RIGHT))) {
-			seq = 0; /* no: reset seq and return */
+			ricks[i].seq = 0; /* no: reset seq and return */
 			return;
 		}
 
 		if (control_status & (CONTROL_UP|CONTROL_DOWN)) {
 			/* up-down: calc new y and test environment */
-			y = E_RICK_ENT.y + ((control_status & CONTROL_UP) ? -0x02 : 0x02);
-			u_envtest(E_RICK_ENT.x, y, E_RICK_STTST(E_RICK_STCRAWL), &env0, &env1);
+			y = rent->y + ((control_status & CONTROL_UP) ? -0x02 : 0x02);
+			u_envtest(rent->x, y, R_STTST(i, E_RICK_STCRAWL), &env0, &env1);
 			if (env1 & (MAP_EFLG_SOLID|MAP_EFLG_SPAD|MAP_EFLG_WAYUP) &&
 					!(control_status & CONTROL_UP)) {
 				/* FIXME what? */
-				E_RICK_STRST(E_RICK_STCLIMB);
+				R_STRST(i, E_RICK_STCLIMB);
 				return;
 			}
 			if (!(env1 & (MAP_EFLG_SOLID|MAP_EFLG_SPAD|MAP_EFLG_WAYUP)) ||
 					(env1 & MAP_EFLG_WAYUP)) {
 				/* ok to move, save */
-				E_RICK_ENT.y = y;
+				rent->y = y;
 				if (env1 & MAP_EFLG_LETHAL) {
-					e_rick_gozombie();
+					e_rick_gozombie(i);
 					return;
 				}
 				if (!(env1 & (MAP_EFLG_VERT|MAP_EFLG_CLIMB))) {
 					/* reached end of climb zone */
-					offsy = (control_status & CONTROL_UP) ? -0x0300 : 0x0100;
+					ricks[i].offsy = (control_status & CONTROL_UP) ? -0x0300 : 0x0100;
 #ifdef ENABLE_SOUND
 					if (control_status & CONTROL_UP)
 						syssnd_play(WAV_JUMP, 1);
 #endif
-					E_RICK_STRST(E_RICK_STCLIMB);
+					R_STRST(i, E_RICK_STCLIMB);
 					return;
 				}
 			}
@@ -407,35 +431,35 @@ e_rick_action2(void)
   if (control_status & (CONTROL_LEFT|CONTROL_RIGHT)) {
     /* left-right: calc new x and test environment */
     if (control_status & CONTROL_LEFT) {
-      if (E_RICK_ENT.x < 2) {  /* prev submap (was: x < 0 with signed x) */
-	e_rick_atExit = TRUE;
+      if (rent->x < 2) {  /* prev submap (was: x < 0 with signed x) */
+	ricks[i].atExit = TRUE;
 	/*6dbd = 0x00;*/
-	E_RICK_ENT.x = 0xe2;
+	rent->x = 0xe2;
 	return;
       }
-      x = E_RICK_ENT.x - 0x02;
+      x = rent->x - 0x02;
     }
     else {
-      x = E_RICK_ENT.x + 0x02;
+      x = rent->x + 0x02;
       if (x >= 0xe8) {  /* next submap */
-	e_rick_atExit = TRUE;
+	ricks[i].atExit = TRUE;
 	/*6dbd = 0x01;*/
-	E_RICK_ENT.x = 0x04;
+	rent->x = 0x04;
 	return;
       }
     }
-    u_envtest(x, E_RICK_ENT.y, E_RICK_STTST(E_RICK_STCRAWL), &env0, &env1);
+    u_envtest(x, rent->y, R_STTST(i, E_RICK_STCRAWL), &env0, &env1);
     if (env1 & (MAP_EFLG_SOLID|MAP_EFLG_SPAD)) return;
-    E_RICK_ENT.x = x;
+    rent->x = x;
     if (env1 & MAP_EFLG_LETHAL) {
-      e_rick_gozombie();
+      e_rick_gozombie(i);
       return;
     }
 
     if (env1 & (MAP_EFLG_VERT|MAP_EFLG_CLIMB)) return;
-    E_RICK_STRST(E_RICK_STCLIMB);
+    R_STRST(i, E_RICK_STCLIMB);
     if (control_status & CONTROL_UP)
-      offsy = -0x0300;
+      ricks[i].offsy = -0x0300;
   }
 }
 
@@ -444,83 +468,101 @@ e_rick_action2(void)
  * Action function for e_rick
  *
  * ASM 12CA
+ *
+ * Called from ent_action via the actf table. e is the entity slot
+ * (always E_RICK_NO == 1 in Stage 1, since only Rick 0 is in ent_ents).
+ * Stage 3 will iterate the extra Ricks separately.
  */
-void e_rick_action(UNUSED(U8 e))
+void e_rick_action(U8 e)
 {
-	static U8 stopped = FALSE; /* is this the most elegant way? */
+	U8 i;
+	ent_t *rent;
 
-	e_rick_action2();
+	/*
+	 * Map the entity slot back to a Rick index. With only Rick 0 active
+	 * and using approach (b), this loop returns 0 for slot 1. Kept as a
+	 * loop (rather than hardcoded 0) so Stage 3 can drop in the extra
+	 * Ricks without touching this code.
+	 */
+	for (i = 0; i < RICK_MAX; i++)
+		if (rick_active[i] && ricks[i].ent_slot == e)
+			break;
+	if (i >= RICK_MAX) return;
 
-	scrawl = E_RICK_STTST(E_RICK_STCRAWL);
+	e_rick_action2(i);
 
-	if E_RICK_STTST(E_RICK_STZOMBIE)
+	ricks[i].scrawl = R_STTST(i, E_RICK_STCRAWL) ? TRUE : FALSE;
+
+	if (R_STTST(i, E_RICK_STZOMBIE))
 		return;
+
+	rent = &R_ENT(i);
 
 	/*
 	 * set sprite
 	 */
 
-	if E_RICK_STTST(E_RICK_STSTOP) {
-		E_RICK_ENT.sprite = (game_dir ? 0x17 : 0x0B);
+	if (R_STTST(i, E_RICK_STSTOP)) {
+		rent->sprite = (game_dir ? 0x17 : 0x0B);
 #ifdef ENABLE_SOUND
-		if (!stopped)
+		if (!ricks[i].prev_stopped)
 		{
 			syssnd_play(WAV_STICK, 1);
-			stopped = TRUE;
+			ricks[i].prev_stopped = TRUE;
 		}
 #endif
 		return;
 	}
 
-	stopped = FALSE;
+	ricks[i].prev_stopped = FALSE;
 
-	if E_RICK_STTST(E_RICK_STSHOOT) {
-		E_RICK_ENT.sprite = (game_dir ? 0x16 : 0x0A);
+	if (R_STTST(i, E_RICK_STSHOOT)) {
+		rent->sprite = (game_dir ? 0x16 : 0x0A);
 		return;
 	}
 
-	if E_RICK_STTST(E_RICK_STCLIMB) {
-		E_RICK_ENT.sprite = (((E_RICK_ENT.x ^ E_RICK_ENT.y) & 0x04) ? 0x18 : 0x0c);
+	if (R_STTST(i, E_RICK_STCLIMB)) {
+		rent->sprite = (((rent->x ^ rent->y) & 0x04) ? 0x18 : 0x0c);
 #ifdef ENABLE_SOUND
-		seq = (seq + 1) & 0x03;
-		if (seq == 0) syssnd_play(WAV_WALK, 1);
+		ricks[i].seq = (ricks[i].seq + 1) & 0x03;
+		if (ricks[i].seq == 0) syssnd_play(WAV_WALK, 1);
 #endif
 		return;
 	}
 
-	if E_RICK_STTST(E_RICK_STCRAWL)
+	if (R_STTST(i, E_RICK_STCRAWL))
 	{
-		E_RICK_ENT.sprite = (game_dir ? 0x13 : 0x07);
-		if (E_RICK_ENT.x & 0x04) E_RICK_ENT.sprite++;
+		rent->sprite = (game_dir ? 0x13 : 0x07);
+		if (rent->x & 0x04) rent->sprite++;
 #ifdef ENABLE_SOUND
-		seq = (seq + 1) & 0x03;
-		if (seq == 0) syssnd_play(WAV_CRAWL, 1);
+		ricks[i].seq = (ricks[i].seq + 1) & 0x03;
+		if (ricks[i].seq == 0) syssnd_play(WAV_CRAWL, 1);
 #endif
 		return;
 	}
 
-	if E_RICK_STTST(E_RICK_STJUMP)
+	if (R_STTST(i, E_RICK_STJUMP))
 	{
-		E_RICK_ENT.sprite = (game_dir ? 0x15 : 0x06);
+		rent->sprite = (game_dir ? 0x15 : 0x06);
 		return;
 	}
 
-	seq++;
+	ricks[i].seq++;
 
-	if (seq >= 0x14)
+	if (ricks[i].seq >= 0x14)
 	{
 #ifdef ENABLE_SOUND
 		syssnd_play(WAV_WALK, 1);
 #endif
-		seq = 0x04;
+		ricks[i].seq = 0x04;
 	}
 #ifdef ENABLE_SOUND
   else
-  if (seq == 0x0C)
+  if (ricks[i].seq == 0x0C)
     syssnd_play(WAV_WALK, 1);
 #endif
 
-  E_RICK_ENT.sprite = (seq >> 2) + 1 + (game_dir ? 0x0c : 0x00);
+  rent->sprite = (ricks[i].seq >> 2) + 1 + (game_dir ? 0x0c : 0x00);
 }
 
 
@@ -529,13 +571,14 @@ void e_rick_action(UNUSED(U8 e))
  *
  * ASM part of 0x0BBB
  */
-void e_rick_save(void)
+void e_rick_save(U8 i)
 {
-	save_x = E_RICK_ENT.x;
-	save_y = E_RICK_ENT.y;
-	save_crawl = E_RICK_STTST(E_RICK_STCRAWL);
+	ent_t *rent = &R_ENT(i);
+	ricks[i].save_x = rent->x;
+	ricks[i].save_y = rent->y;
+	ricks[i].save_crawl = R_STTST(i, E_RICK_STCRAWL) ? TRUE : FALSE;
 	/* FIXME
-	 * save_C0 = E_RICK_ENT.b0C;
+	 * save_C0 = rent->b0C;
 	 * plus some 6DBC stuff?
 	 */
 }
@@ -546,17 +589,18 @@ void e_rick_save(void)
  *
  * ASM part of 0x0BDC
  */
-void e_rick_restore(void)
+void e_rick_restore(U8 i)
 {
-	E_RICK_ENT.x = save_x;
-	E_RICK_ENT.y = save_y;
-	E_RICK_ENT.front = FALSE;
-	if (save_crawl)
-		E_RICK_STSET(E_RICK_STCRAWL);
+	ent_t *rent = &R_ENT(i);
+	rent->x = ricks[i].save_x;
+	rent->y = ricks[i].save_y;
+	rent->front = FALSE;
+	if (ricks[i].save_crawl)
+		R_STSET(i, E_RICK_STCRAWL);
 	else
-		E_RICK_STRST(E_RICK_STCRAWL);
+		R_STRST(i, E_RICK_STCRAWL);
 	/* FIXME
-	 * E_RICK_ENT.b0C = save_C0;
+	 * rent->b0C = save_C0;
 	 * plus some 6DBC stuff?
 	 */
 }

@@ -20,9 +20,11 @@ Players are referred to as "Ricks." Player 1 = Rick #0 (index), Player 2 = Rick 
 
 ---
 
-## Stage 1 — Refactor: turn `e_rick` into an array of Ricks
+## Stage 1 — Refactor: turn `e_rick` into an array of Ricks  *(DONE)*
 
 Goal: structurally support N Ricks without changing gameplay (still 1 active player).
+
+**Status:** complete. `rick_t` array, `R_*` macros, per-Rick `e_rick_*` signatures landed. Approach (b) chosen — extra Rick entities will live in a separate array (still to be added in Stage 3; Ricks 1–3 currently have `ent_slot == 0`). Gameplay at `rick_count == 1` is unchanged. Build clean (verified by user).
 
 ### 1.1 Introduce a Rick struct and array
 - Add `rick_t` containing the per-Rick state currently held as file-scope globals in `xrick/src/e_rick.c`:
@@ -66,7 +68,7 @@ Goal: structurally support N Ricks without changing gameplay (still 1 active pla
 - Confirm sprite numbers used per Rick. For now all 4 use the same Rick sprites; palette differentiation is out of scope.
 
 ### Stage 1 acceptance
-- Build clean. With `rick_count == 1`, gameplay is byte-for-byte identical to before. P1 plays as today.
+- Build clean. With `rick_count == 1`, gameplay is byte-for-byte identical to before. P1 plays as today. ✓
 
 ---
 
