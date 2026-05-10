@@ -85,6 +85,14 @@ typedef struct {
   U8 prev_s;     /* new */
   U8 front;      /* new */
   U8 trigsnd;    /* new */
+  /*
+   * Co-op (Stage 4): per-enemy AI target. Index into ricks[] of the
+   * Rick this entity is currently chasing (t1b/t2). 0xff = no target
+   * yet / target lost. See e_them_target() in e_them.c for how this
+   * gets acquired (closest active+alive Rick) and dropped (target dies
+   * or goes out of sight).
+   */
+  U8 target_rick;
 } ent_t;
 
 typedef struct {

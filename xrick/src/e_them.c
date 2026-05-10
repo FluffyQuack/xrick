@@ -29,6 +29,16 @@
 #define TYPE_1B (0xff)
 
 /*
+ * Co-op (Stage 4): an enemy "loses sight" of its target once the target
+ * has moved more than this many pixels away on either axis. Roughly one
+ * playfield's worth (the actual visible area is ~0xF0 x ~0xC8), giving
+ * the player a fair chance to break line-of-sight by scrolling away
+ * while not letting enemies forget their target the instant they walk
+ * around a corner.
+ */
+#define E_THEM_SIGHT_RANGE 0x100
+
+/*
  * public vars
  */
 U32 e_them_rndseed = 0;
@@ -37,6 +47,90 @@ U32 e_them_rndseed = 0;
  * local vars
  */
 static U16 e_them_rndnbr = 0;
+
+
+/*
+ * Co-op (Stage 4): is a Rick a valid AI target right now?
+ * Valid = active, not dead, not mid-zombie animation.
+ */
+static U8
+e_them_rick_valid(U8 r)
+{
+  if (r >= RICK_MAX) return FALSE;
+  if (!rick_active[r]) return FALSE;
+  if (R_STTST(r, E_RICK_STDEAD | E_RICK_STZOMBIE)) return FALSE;
+  return TRUE;
+}
+
+/*
+ * Co-op (Stage 4): is this Rick close enough that the enemy can still
+ * see them? Manhattan distance on each axis vs. E_THEM_SIGHT_RANGE.
+ */
+static U8
+e_them_in_sight(U8 e, ent_t *rent)
+{
+  S32 dx = (S32)rent->x - (S32)ent_ents[e].x;
+  S32 dy = (S32)rent->y - (S32)ent_ents[e].y;
+  if (dx < 0) dx = -dx;
+  if (dy < 0) dy = -dy;
+  return (dx <= E_THEM_SIGHT_RANGE && dy <= E_THEM_SIGHT_RANGE);
+}
+
+/*
+ * Co-op (Stage 4): resolve which Rick this enemy is chasing.
+ *
+ * Stickiness rules (from the design):
+ *   - If the enemy already has a target and that target is still valid
+ *     AND still in sight, keep it.
+ *   - Otherwise re-acquire the closest valid Rick within sight range.
+ *   - If no Rick qualifies, fall back to Rick 0's entity so the existing
+ *     AI math keeps working. This case is transient: when every active
+ *     Rick is dead/zombie the CTRL_RICK handler restarts the submap, and
+ *     out-of-sight-with-no-fallback effectively means "stay put", which
+ *     is fine.
+ *
+ * Returns a pointer to the target ent_t (never NULL).
+ */
+static ent_t *
+e_them_target(U8 e)
+{
+  U8 t = ent_ents[e].target_rick;
+  ent_t *rent;
+  U8 r, best;
+  U32 best_d;
+
+  /* Keep current target if still alive and visible. */
+  if (e_them_rick_valid(t)) {
+    rent = ricks_get_ent(t);
+    if (e_them_in_sight(e, rent))
+      return rent;
+  }
+
+  /* Re-acquire: closest valid Rick within sight. */
+  best = 0xff;
+  best_d = 0;
+  for (r = 0; r < RICK_MAX; r++) {
+    ent_t *cr;
+    S32 dx, dy;
+    U32 d;
+    if (!e_them_rick_valid(r)) continue;
+    cr = ricks_get_ent(r);
+    if (!e_them_in_sight(e, cr)) continue;
+    dx = (S32)cr->x - (S32)ent_ents[e].x;
+    dy = (S32)cr->y - (S32)ent_ents[e].y;
+    if (dx < 0) dx = -dx;
+    if (dy < 0) dy = -dy;
+    d = (U32)dx + (U32)dy;
+    if (best == 0xff || d < best_d) {
+      best = r;
+      best_d = d;
+    }
+  }
+
+  ent_ents[e].target_rick = best;
+  /* Fallback to Rick 0 if nothing in sight -- see comment above. */
+  return ricks_get_ent(best == 0xff ? 0 : best);
+}
 
 /*
  * Check if entity boxtests with a lethal e_them i.e. something lethal
@@ -193,7 +287,14 @@ e_them_t1_action2(U8 e, U8 type)
     /* set direction to move horizontally towards rick */
     if ((ent_ents[e].x & 0x1e) != 0x10)  /* prevents too frequent u-turns */
       return;
-    ent_ents[e].offsx = (ent_ents[e].x < E_RICK_ENT.x) ? 0x02 : -0x02;
+    /*
+     * Co-op (Stage 4): chase the targeted Rick rather than always P1.
+     * The target is sticky across ticks; see e_them_target().
+     */
+    {
+      ent_t *tgt = e_them_target(e);
+      ent_ents[e].offsx = (ent_ents[e].x < tgt->x) ? 0x02 : -0x02;
+    }
     return;
   }
   else {
@@ -349,6 +450,12 @@ e_them_t2_action2(U8 e)
   U16 x, y;
   S16 yd;
   U8 env0, env1;
+  /*
+   * Co-op (Stage 4): t2 climbers chase the targeted Rick instead of
+   * unconditionally chasing P1. Resolved once per tick so the AI is
+   * internally consistent across the goto-soup below.
+   */
+  ent_t *tgt = e_them_target(e);
 
   /*
    * vars required by the Black Magic (tm) performance at the
@@ -383,11 +490,11 @@ e_them_t2_action2(U8 e)
     (((ent_ents[e].x ^ ent_ents[e].y) & 0x04) ? 1 : 0);
 
   /* reached rick's level? */
-  if ((ent_ents[e].y & 0xfe) != (E_RICK_ENT.y & 0xfe)) goto ymove;
+  if ((ent_ents[e].y & 0xfe) != (tgt->y & 0xfe)) goto ymove;
 
   xmove:
     /* calc new x and test environment */
-    ent_ents[e].offsx = (ent_ents[e].x < E_RICK_ENT.x) ? 0x02 : -0x02;
+    ent_ents[e].offsx = (ent_ents[e].x < tgt->x) ? 0x02 : -0x02;
     x = ent_ents[e].x + ent_ents[e].offsx;
     u_envtest(x, ent_ents[e].y, FALSE, &env0, &env1);
     if (env1 & (MAP_EFLG_SOLID|MAP_EFLG_SPAD|MAP_EFLG_WAYUP))
@@ -403,7 +510,7 @@ e_them_t2_action2(U8 e)
 
   ymove:
     /* calc new y and test environment */
-    yd = ent_ents[e].y < E_RICK_ENT.y ? 0x02 : -0x02;
+    yd = ent_ents[e].y < tgt->y ? 0x02 : -0x02;
     y = ent_ents[e].y + yd;
     if (y < 0 || y > 0x0140) {
       ent_ents[e].n = 0;
@@ -452,7 +559,7 @@ e_them_t2_action2(U8 e)
 	  ent_ents[e].offsy = 0x0800;
 	return;
       }
-      if (((ent_ents[e].x & 0x07) == 0x04) && (y < E_RICK_ENT.y)) {
+      if (((ent_ents[e].x & 0x07) == 0x04) && (y < tgt->y)) {
 	/*sys_printf("e_them_t2 climbing00\n");*/
 	ent_ents[e].flgclmb = TRUE;  /* climbing */
 	return;
@@ -468,7 +575,7 @@ e_them_t2_action2(U8 e)
 
     if ((env1 & MAP_EFLG_CLIMB) &&
 	((ent_ents[e].x & 0x0e) == 0x04) &&
-	(ent_ents[e].y > E_RICK_ENT.y)) {
+	(ent_ents[e].y > tgt->y)) {
       /*sys_printf("e_them_t2 climbing01\n");*/
       ent_ents[e].flgclmb = TRUE;  /* climbing */
       return;

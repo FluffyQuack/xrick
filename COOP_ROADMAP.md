@@ -186,7 +186,36 @@ polish.
 
 ## Stage 4 — Polish & known gaps
 
-These are explicitly out-of-scope for the initial co-op implementation but worth tracking.
+Stage 4 is a grab-bag of polish items pulled in on demand. Tracked items
+below; completed sub-tasks are marked.
+
+### 4.x Per-Rick enemy AI targeting *(DONE)*
+
+**Status:** complete. Enemies (t1b chasers, t2 climbers) now lock onto
+the closest active, alive Rick instead of always targeting P1. Targets
+are sticky: once acquired, an enemy keeps chasing its chosen Rick until
+that Rick dies (DEAD/ZOMBIE) or moves out of sight, at which point the
+enemy re-acquires the closest valid Rick.
+
+Implementation:
+- New `target_rick` field on `ent_t` (sentinel `0xff` = unset).
+  Initialized in `ent_actvis()` when an entity slot is populated.
+- `e_them_target(e)` in `e_them.c` resolves the current target each tick.
+  Stickiness rule: keep existing target if still valid (active +
+  non-dead + non-zombie) and still within `E_THEM_SIGHT_RANGE` (0x100
+  pixels Manhattan per axis, ~one playfield). Otherwise pick the
+  closest valid Rick within sight; if nothing qualifies, fall back to
+  Rick 0 so the AI math keeps working through the transient all-dead
+  window before `CTRL_RICK` restarts the submap.
+- `e_them_t1_action2()` TYPE_1B u-turn direction now keys off the
+  target's x.
+- `e_them_t2_action2()` climb/x/y decisions now key off the target.
+  Target is resolved once at the top of the function so the goto-soup
+  remains internally consistent across a single tick.
+- Collision, stop-mark stun, and t3 wakeup logic was already per-Rick
+  ("any Rick triggers") from Stage 3 and is intentionally unchanged.
+
+### Remaining out-of-scope items
 
 - **Player↔player collision**: none for now (per design). Consider adding optional pass-through vs. solid mode later.
 - **Camera**: P1-only. Players can wander off-screen and become unreachable / undeath-able until P1 scrolls back. Acceptable for MVP.

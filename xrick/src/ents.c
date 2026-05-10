@@ -280,6 +280,11 @@ ent_actvis(U8 frow, U8 lrow)
 
     ent_ents[e].front = FALSE;
 
+    /*
+     * Co-op (Stage 4): newly-spawned enemies have no target until the
+     * first AI tick acquires one. 0xff = unset sentinel.
+     */
+    ent_ents[e].target_rick = 0xff;
   }
 }
 
