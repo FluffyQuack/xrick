@@ -352,6 +352,7 @@ e_rick_action2(U8 i)
 	}
 	if (cs & CONTROL_LEFT) {  /* move left */
 		game_dir = LEFT;
+		ricks[i].dir = LEFT;
 		if (rent->x < 2) {  /* prev submap (was: x < 0 with signed x) */
 			ricks[i].atExit = TRUE;
 			rent->x = 0xe2;
@@ -361,6 +362,7 @@ e_rick_action2(U8 i)
 	} else {  /* move right */
 		x = rent->x + 2;
 		game_dir = RIGHT;
+		ricks[i].dir = RIGHT;
 		if (x >= 0xe8) {  /* next submap */
 			ricks[i].atExit = TRUE;
 			rent->x = 0x04;
@@ -420,9 +422,11 @@ e_rick_action2(U8 i)
 		if (cs & CONTROL_RIGHT)
 		{
 			game_dir = RIGHT;
+			ricks[i].dir = RIGHT;
 			ricks[i].stop_x = rent->x + 0x17;
 		} else {
 			game_dir = LEFT;
+			ricks[i].dir = LEFT;
 			ricks[i].stop_x = rent->x;
 		}
 		ricks[i].stop_y = rent->y + 0x000E;
@@ -627,7 +631,7 @@ e_rick_tick(U8 i)
 	 */
 
 	if (R_STTST(i, E_RICK_STSTOP)) {
-		rent->sprite = (game_dir ? 0x17 : 0x0B);
+		rent->sprite = (ricks[i].dir ? 0x17 : 0x0B);
 #ifdef ENABLE_SOUND
 		if (!ricks[i].prev_stopped)
 		{
@@ -641,7 +645,7 @@ e_rick_tick(U8 i)
 	ricks[i].prev_stopped = FALSE;
 
 	if (R_STTST(i, E_RICK_STSHOOT)) {
-		rent->sprite = (game_dir ? 0x16 : 0x0A);
+		rent->sprite = (ricks[i].dir ? 0x16 : 0x0A);
 		return;
 	}
 
@@ -656,7 +660,7 @@ e_rick_tick(U8 i)
 
 	if (R_STTST(i, E_RICK_STCRAWL))
 	{
-		rent->sprite = (game_dir ? 0x13 : 0x07);
+		rent->sprite = (ricks[i].dir ? 0x13 : 0x07);
 		if (rent->x & 0x04) rent->sprite++;
 #ifdef ENABLE_SOUND
 		ricks[i].seq = (ricks[i].seq + 1) & 0x03;
@@ -667,7 +671,7 @@ e_rick_tick(U8 i)
 
 	if (R_STTST(i, E_RICK_STJUMP))
 	{
-		rent->sprite = (game_dir ? 0x15 : 0x06);
+		rent->sprite = (ricks[i].dir ? 0x15 : 0x06);
 		return;
 	}
 
@@ -686,7 +690,7 @@ e_rick_tick(U8 i)
     syssnd_play(WAV_WALK, 1);
 #endif
 
-  rent->sprite = (ricks[i].seq >> 2) + 1 + (game_dir ? 0x0c : 0x00);
+  rent->sprite = (ricks[i].seq >> 2) + 1 + (ricks[i].dir ? 0x0c : 0x00);
 }
 
 

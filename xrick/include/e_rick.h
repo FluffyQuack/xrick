@@ -44,6 +44,7 @@ typedef struct {
 	U8  save_crawl;
 	U8  ent_slot;     /* index into ent_ents[] backing this Rick (Rick 0 -> 1) */
 	U8  prev_stopped; /* one-shot sound flag for the stop-mark stick sfx */
+	U8  dir;          /* per-Rick facing (LEFT/RIGHT) for sprite selection */
 } rick_t;
 
 extern rick_t ricks[RICK_MAX];
