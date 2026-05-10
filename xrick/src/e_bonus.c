@@ -34,7 +34,14 @@ e_bonus_action(U8 e)
 #define seq c1
 
   if (ent_ents[e].seq == 0) {
-    if (e_rick_boxtest(0, e)) { /* Stage 3 will iterate all active Ricks */
+    /* Co-op (Stage 3): any active, alive Rick can collect the bonus. */
+    U8 r, picked = FALSE;
+    for (r = 0; r < RICK_MAX; r++) {
+      if (!rick_active[r]) continue;
+      if (R_STTST(r, E_RICK_STDEAD | E_RICK_STZOMBIE)) continue;
+      if (e_rick_boxtest(r, e)) { picked = TRUE; break; }
+    }
+    if (picked) {
       env_score += 500;
 #ifdef ENABLE_SOUND
       syssnd_play(WAV_BONUS, 1);

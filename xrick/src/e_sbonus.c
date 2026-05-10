@@ -37,11 +37,30 @@ U16 e_sbonus_bonus = 0;
  *
  * ASM 2182
  */
+/*
+ * Co-op (Stage 3): scan every active, alive Rick to see if any of them
+ * is inside e's trigger box. Returns TRUE on the first hit.
+ */
+static U8
+sbonus_any_in_trig(U8 e)
+{
+	U8 r;
+	for (r = 0; r < RICK_MAX; r++) {
+		ent_t *rent;
+		if (!rick_active[r]) continue;
+		if (R_STTST(r, E_RICK_STDEAD | E_RICK_STZOMBIE)) continue;
+		rent = ricks_get_ent(r);
+		if (u_trigbox(e, rent->x + 0x0C, rent->y + 0x0A))
+			return TRUE;
+	}
+	return FALSE;
+}
+
 void
 e_sbonus_start(U8 e)
 {
 	ent_ents[e].sprite = 0; /* invisible */
-	if (u_trigbox(e, ENT_XRICK.x + 0x0C, ENT_XRICK.y + 0x0A)) {
+	if (sbonus_any_in_trig(e)) {
 		/* rick is within trigger box */
 		ent_ents[e].n = 0;
 		e_sbonus_counting = TRUE;  /* 6DD5 */
@@ -67,7 +86,7 @@ e_sbonus_stop(U8 e)
 	if (!e_sbonus_counting)
 		return;
 
-	if (u_trigbox(e, ENT_XRICK.x + 0x0C, ENT_XRICK.y + 0x0A)) {
+	if (sbonus_any_in_trig(e)) {
 		/* rick is within trigger box */
 		e_sbonus_counting = FALSE;  /* stop counting */
 		ent_ents[e].n = 0;  /* deactivate entity */

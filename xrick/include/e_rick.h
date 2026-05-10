@@ -15,6 +15,7 @@
 #define _E_RICK_H
 
 #include "system.h"
+#include "ents.h"  /* ent_t for extra_rick_ents */
 
 /*
  * Co-op refactor (Stage 1): turn the single global Rick into an array of
@@ -103,6 +104,31 @@ extern void e_rick_restore(U8 i);
 extern void e_rick_action(U8);     /* entity-action callback; takes ent slot */
 extern void e_rick_gozombie(U8 i);
 extern U8   e_rick_boxtest(U8 i, U8 e);
+
+/*
+ * Co-op (Stage 3): Ricks 1..3 do not live in ent_ents[] (approach (b) in
+ * COOP_ROADMAP.md). They get their own ent_t records here. Use
+ * ricks_get_ent(i) to access either backing store transparently.
+ */
+extern ent_t extra_rick_ents[RICK_MAX - 1];
+extern ent_t *ricks_get_ent(U8 i);
+
+/*
+ * Co-op (Stage 3): tick / paint / scroll hooks for the extra Ricks.
+ * - ricks_extra_action: called from ent_action() right after the main
+ *   entity loop has run (Rick 0 is part of that loop).
+ * - ricks_extra_paint_*: called from ents_paintAll() so the extras get
+ *   the same erase/draw/dirty-rect bookkeeping as ent_ents[].
+ * - ricks_extra_clprev: called from ent_clprev() to reset prev_n.
+ * - ricks_extra_scroll: called from scroll_up/scroll_down to keep extras
+ *   tracking the scrolled world.
+ * - ricks_spawn_at_p1: places every active extra Rick at Rick 0's current
+ *   (x,y) with a fresh state. Called on every submap entry / restart.
+ */
+extern void ricks_extra_action(void);
+extern void ricks_extra_clprev(void);
+extern void ricks_extra_scroll(S16 dy);
+extern void ricks_spawn_at_p1(void);
 
 #endif
 

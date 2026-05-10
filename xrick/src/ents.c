@@ -359,6 +359,16 @@ void ents_paintAll()
 			maps_paintRect(ent_ents[i].prev_x, ent_ents[i].prev_y, 0x20, 0x15);
 		}
 	}
+	/*
+	 * Co-op (Stage 3): erase the extra Ricks (1..3) the same way. Their
+	 * backing entities live in extra_rick_ents, not ent_ents, so the loop
+	 * above doesn't see them.
+	 */
+	for (i = 0; i < RICK_MAX - 1; i++)
+	{
+		if (extra_rick_ents[i].prev_n && (prev_h || extra_rick_ents[i].prev_s))
+			maps_paintRect(extra_rick_ents[i].prev_x, extra_rick_ents[i].prev_y, 0x20, 0x15);
+	}
 
 	/* foreground loop : draw all entities that are visible */
 	for (i = 0; ent_ents[i].n != 0xff; i++)
@@ -370,6 +380,13 @@ void ents_paintAll()
 				ent_ents[i].x, ent_ents[i].y,
 				ent_ents[i].front);
 		}
+	}
+	/* Co-op (Stage 3): foreground draw for the extra Ricks. */
+	for (i = 0; i < RICK_MAX - 1; i++)
+	{
+		ent_t *e = &extra_rick_ents[i];
+		if (rick_active[i + 1] && e->n && (env_highlight || e->sprite))
+			sprites_paint2(e->sprite, e->x, e->y, e->front);
 	}
 
 	/*
@@ -425,6 +442,52 @@ void ents_paintAll()
 		ent_ents[i].prev_s = ent_ents[i].sprite;
 	}
 
+	/*
+	 * Co-op (Stage 3): same dirty-rect bookkeeping for the extra Ricks.
+	 * Inlined rather than refactored because it's a small, localized loop
+	 * and the original logic is tangled enough that extracting it would
+	 * obscure intent.
+	 */
+	for (i = 0; i < RICK_MAX - 1; i++)
+	{
+		ent_t *e = &extra_rick_ents[i];
+		U8 active = rick_active[i + 1] && e->n;
+		U8 was_active = e->prev_n;
+
+		if (was_active && (prev_h || e->prev_s))
+		{
+			if (active && (env_highlight || e->sprite))
+			{
+				dx = abs(e->x - e->prev_x);
+				dy = abs(e->y - e->prev_y);
+				if (dx < 0x20 && dy < 0x16)
+				{
+					ent_addrect((e->prev_x < e->x) ? e->prev_x : e->x,
+					            (e->prev_y < e->y) ? e->prev_y : e->y,
+					            dx + 0x20, dy + 0x15);
+				}
+				else
+				{
+					ent_addrect(e->x, e->y, 0x20, 0x15);
+					ent_addrect(e->prev_x, e->prev_y, 0x20, 0x15);
+				}
+			}
+			else
+			{
+				ent_addrect(e->prev_x, e->prev_y, 0x20, 0x15);
+			}
+		}
+		else if (active && (env_highlight || e->sprite))
+		{
+			ent_addrect(e->x, e->y, 0x20, 0x15);
+		}
+
+		e->prev_x = e->x;
+		e->prev_y = e->y;
+		e->prev_n = e->n;
+		e->prev_s = e->sprite;
+	}
+
 	prev_h = env_highlight;
 }
 
@@ -440,6 +503,9 @@ ent_clprev(void)
 
   for (i = 0; ent_ents[i].n != 0xff; i++)
     ent_ents[i].prev_n = 0;
+
+  /* Co-op (Stage 3): also reset the extra Ricks' dirty-rect state. */
+  ricks_extra_clprev();
 }
 
 /*
@@ -503,6 +569,14 @@ ent_action(void)
 	ent_actf[k](i);
     }
   }
+
+  /*
+   * Co-op (Stage 3): tick Ricks 1..3 after the main entity loop. They
+   * live in extra_rick_ents (approach (b)), so the loop above never
+   * sees them. Order is "P1 first, then enemies, then extras", which
+   * matches the existing scroll/camera logic that keys off Rick 0.
+   */
+  ricks_extra_action();
 }
 
 

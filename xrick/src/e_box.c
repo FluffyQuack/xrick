@@ -65,8 +65,28 @@ e_box_action(U8 e)
 	} else {
 		/*
 		 * not lethal: check to see if triggered
+		 *
+		 * Co-op (Stage 3): any active, alive Rick can pick up the box,
+		 * and any active Rick's stop-mark can detonate it.
 		 */
-		if (e_rick_boxtest(0, e)) { /* Stage 3 will iterate all active Ricks */
+		U8 picked = FALSE, stopped = FALSE, r;
+		for (r = 0; r < RICK_MAX; r++) {
+			if (!rick_active[r]) continue;
+			if (R_STTST(r, E_RICK_STDEAD | E_RICK_STZOMBIE)) continue;
+			if (e_rick_boxtest(r, e)) { picked = TRUE; break; }
+		}
+		if (!picked) {
+			for (r = 0; r < RICK_MAX; r++) {
+				if (!rick_active[r]) continue;
+				if (R_STTST(r, E_RICK_STSTOP) &&
+				    u_fboxtest(e, ricks[r].stop_x, ricks[r].stop_y)) {
+					stopped = TRUE;
+					break;
+				}
+			}
+		}
+
+		if (picked) {
 			/* rick: collect bombs or bullets and stop */
 #ifdef ENABLE_SOUND
 			syssnd_play(WAV_BOX, 1);
@@ -78,8 +98,7 @@ e_box_action(U8 e)
 			ent_ents[e].n = 0;
 			map_marks[ent_ents[e].mark].ent |= MAP_MARK_NACT;
 		}
-		else if (E_RICK_STTST(E_RICK_STSTOP) &&
-				u_fboxtest(e, e_rick_stop_x, e_rick_stop_y)) {
+		else if (stopped) {
 			/* rick's stick: explode */
 			explode(e);
 		}

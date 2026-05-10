@@ -120,9 +120,42 @@ Ricks 1-3 are not yet simulated/rendered -- that lands in Stage 3.
 
 ---
 
-## Stage 3 — Per-player gameplay loop
+## Stage 3 — Per-player gameplay loop  *(DONE)*
 
 Goal: every active Rick is simulated and rendered each tick.
+
+**Status:** complete. Approach (b) entity store landed: `extra_rick_ents[3]`
+in `e_rick.c` backs Ricks 1-3, accessed transparently through the new
+`R_ENT(i)` macro / public `ricks_get_ent(i)`. The per-Rick action+sprite
+logic is now in `e_rick_tick(i)`; `e_rick_action()` keeps the actf-table
+contract and ticks Rick 0, while `ricks_extra_action()` (called from
+`ent_action()` after the main loop) ticks Ricks 1-3. Dead Ricks early-return
+with sprite/n cleared so they stop drawing and colliding; the "all dead"
+check in `CTRL_RICK` (already wired in Stage 1) now actually fires for
+multi-Rick.
+
+`ents_paintAll()` got mirrored erase / draw / dirty-rect loops for the
+extra Ricks; `ent_clprev()` calls `ricks_extra_clprev()`; `scroll_up/down`
+call `ricks_extra_scroll(±8)` to keep extras tracking the scrolled world.
+
+Collision sites updated to iterate active, alive Ricks: `e_them.c` (t1/t2
+contact-kill + stop-stun, t3 trigger-by-rick / trigger-by-stop /
+contact-kill, plus the wakeup-vs-zombie guard relaxed to "all Ricks dying"),
+`e_box.c` (pickup + stop-detonate), `e_bonus.c` (pickup), `e_sbonus.c`
+(start/stop trigger boxes), `e_bomb.c` (new `e_bomb_hit_ent()` /
+`e_bomb_kill_ricks()` so the explosion checks every Rick).
+
+`ricks_spawn_at_p1()` re-spawns all active extras at Rick 0's spot on
+INIT, INIT_MAP and INIT_SUBMAP (run before `game_save()` so the snapshot
+captures the shared spawn). `e_rick_restore()` re-arms the extra Rick's
+entity (n / sprite / w / h) on restart so a Rick that was cleared on death
+comes back. `set_rick_count()` in `sysevt.c` now wires up the backing
+ent_t when a player presses 2/3/4 mid-game, and zeroes it on 1.
+
+AI tracking in `e_them.c` (t1b chase, t2 climb-toward-rick) intentionally
+still keys off Rick 0 (`E_RICK_ENT`) -- the design locks the camera to P1
+and chasing P1 keeps enemies on-screen. Per-Rick AI targeting is Stage 4
+polish.
 
 ### 3.1 Action loop
 - In `ent_action()` (`xrick/src/ents.c:481`), invoke `e_rick_action(slot)` for every active Rick slot. With approach (b), iterate the extra Rick array explicitly.

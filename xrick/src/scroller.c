@@ -23,6 +23,7 @@
 #include "draw.h"
 #include "maps.h"
 #include "ents.h"
+#include "e_rick.h"
 
 static U8 period;
 
@@ -68,6 +69,8 @@ scroll_up(void)
       }
     }
   }
+  /* Co-op (Stage 3): keep extras in step with the world. */
+  ricks_extra_scroll(-8);
 
   /* display */
 	maps_paint();
@@ -136,6 +139,8 @@ scroll_down(void)
       }
     }
   }
+  /* Co-op (Stage 3): keep extras in step with the world. */
+  ricks_extra_scroll(+8);
 
   /* display */
 	maps_paint();

@@ -59,6 +59,38 @@ U8 e_bomb_hit(U8 e)
 }
 
 /*
+ * Co-op (Stage 3): bomb-vs-rick test by pointer, so we can hit Ricks 1..3
+ * (which don't live in ent_ents[]). Same comparison as e_bomb_hit but
+ * dereferences a caller-supplied ent_t.
+ */
+static U8 e_bomb_hit_ent(ent_t *ent)
+{
+	if (ent->x > (E_BOMB_ENT.x >= 0xE0 ? 0xFF : E_BOMB_ENT.x + 0x20))
+			return FALSE;
+	if (ent->x + ent->w < (E_BOMB_ENT.x > 0x04 ? E_BOMB_ENT.x - 0x04 : 0))
+			return FALSE;
+	if (ent->y > (E_BOMB_ENT.y + 0x1D))
+			return FALSE;
+	if (ent->y + ent->h < (E_BOMB_ENT.y > 0x0004 ? E_BOMB_ENT.y - 0x0004 : 0))
+			return FALSE;
+	return TRUE;
+}
+
+/*
+ * Co-op (Stage 3): test the bomb against every active, alive Rick.
+ */
+static void e_bomb_kill_ricks(void)
+{
+	U8 r;
+	for (r = 0; r < RICK_MAX; r++) {
+		if (!rick_active[r]) continue;
+		if (R_STTST(r, E_RICK_STDEAD | E_RICK_STZOMBIE)) continue;
+		if (e_bomb_hit_ent(ricks_get_ent(r)))
+			e_rick_gozombie(r);
+	}
+}
+
+/*
  * Initialize bomb
  */
 void e_bomb_init(U16 x, U16 y)
@@ -137,8 +169,7 @@ e_bomb_action(UNUSED(U8 e))
 		e_bomb_xc = E_BOMB_ENT.x + 0x0C;
 		e_bomb_yc = E_BOMB_ENT.y + 0x000A;
 		e_bomb_lethal = TRUE;
-		if (e_bomb_hit(E_RICK_NO))
-			e_rick_gozombie(0); /* Stage 3 will iterate all active Ricks */
+		e_bomb_kill_ricks();
 	}
 	else
 	{
@@ -152,8 +183,7 @@ e_bomb_action(UNUSED(U8 e))
 		E_BOMB_ENT.sprite = 0xa8 + 4 - (e_bomb_ticker >> 1);
 #endif
 		/* exploding, hence lethal */
-		if (e_bomb_hit(E_RICK_NO))
-			e_rick_gozombie(0); /* Stage 3 will iterate all active Ricks */
+		e_bomb_kill_ricks();
 	}
 }
 

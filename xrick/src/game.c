@@ -482,6 +482,12 @@ static void game_cycle(void)
 			else
 			{
 				map_init();
+				/*
+				 * Co-op (Stage 3): every active Rick spawns at the same
+				 * spot on map entry. Must run before game_save() so the
+				 * snapshot used by restart() captures the shared spawn.
+				 */
+				ricks_spawn_at_p1();
 				game_save();
 				fb_clear();                 /* clear buffer */
 				//ent_clprev();
@@ -731,6 +737,8 @@ static void game_cycle(void)
 		case INIT_SUBMAP:
 
 			map_init();                     /* initialize the map */
+			/* Co-op (Stage 3): spawn extras at Rick 0 before game_save snapshots. */
+			ricks_spawn_at_p1();
 			game_save();                        /* save data in case of a restart */
 			fb_clear();
 			ent_clprev();                   /* cleanup entities */
@@ -880,6 +888,13 @@ init(void)
   ent_ents[1].sprite = 0x01;
   ent_ents[1].front = FALSE;
   ent_ents[ENT_ENTSNUM].n = 0xFF;
+
+  /*
+   * Co-op (Stage 3): position the extra Ricks at Rick 0's spawn. At INIT
+   * only Rick 0 is active, so this is a no-op today; it becomes
+   * load-bearing as soon as the player presses 2/3/4 mid-game.
+   */
+  ricks_spawn_at_p1();
 
   map_resetMarks();
 }

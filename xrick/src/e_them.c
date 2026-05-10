@@ -241,14 +241,30 @@ e_them_t1_action(U8 e, U8 type)
     return;
   }
 
-  /* rick stops them */
-  if (E_RICK_STTST(E_RICK_STSTOP) &&
-      u_fboxtest(e, e_rick_stop_x, e_rick_stop_y))
-    ent_ents[e].latency = 0x14;
-
-  /* they kill rick */
-  if (e_rick_boxtest(0, e))
-    e_rick_gozombie(0); /* Stage 3 will iterate all active Ricks */
+  /*
+   * Co-op (Stage 3): "rick stops them" and "they kill rick" are now
+   * per-Rick. Any active Rick whose stop-mark covers this entity stuns
+   * it; the first active, non-zombie Rick the entity overlaps dies.
+   */
+  {
+    U8 r;
+    for (r = 0; r < RICK_MAX; r++) {
+      if (!rick_active[r]) continue;
+      if (R_STTST(r, E_RICK_STSTOP) &&
+          u_fboxtest(e, ricks[r].stop_x, ricks[r].stop_y)) {
+        ent_ents[e].latency = 0x14;
+        break;
+      }
+    }
+    for (r = 0; r < RICK_MAX; r++) {
+      if (!rick_active[r]) continue;
+      if (R_STTST(r, E_RICK_STDEAD | E_RICK_STZOMBIE)) continue;
+      if (e_rick_boxtest(r, e)) {
+        e_rick_gozombie(r);
+        break;
+      }
+    }
+  }
 }
 
 
@@ -519,9 +535,18 @@ e_them_t2_action(U8 e)
 {
   e_them_t2_action2(e);
 
-  /* they kill rick */
-  if (e_rick_boxtest(0, e))
-    e_rick_gozombie(0); /* Stage 3 will iterate all active Ricks */
+  /* Co-op (Stage 3): test every active, non-zombie Rick for collision. */
+  {
+    U8 r;
+    for (r = 0; r < RICK_MAX; r++) {
+      if (!rick_active[r]) continue;
+      if (R_STTST(r, E_RICK_STDEAD | E_RICK_STZOMBIE)) continue;
+      if (e_rick_boxtest(r, e)) {
+        e_rick_gozombie(r);
+        break;
+      }
+    }
+  }
 
   /* lethal entities kill them */
   if (u_themtest(e)) {
@@ -544,10 +569,18 @@ e_them_t2_action(U8 e)
     return;
   }
 
-  /* rick stops them */
-  if (E_RICK_STTST(E_RICK_STSTOP) &&
-      u_fboxtest(e, e_rick_stop_x, e_rick_stop_y))
-    ent_ents[e].latency = 0x14;
+  /* Co-op (Stage 3): any Rick's stop-mark stuns them. */
+  {
+    U8 r;
+    for (r = 0; r < RICK_MAX; r++) {
+      if (!rick_active[r]) continue;
+      if (R_STTST(r, E_RICK_STSTOP) &&
+          u_fboxtest(e, ricks[r].stop_x, ricks[r].stop_y)) {
+        ent_ents[e].latency = 0x14;
+        break;
+      }
+    }
+  }
 }
 
 
@@ -652,16 +685,27 @@ e_them_t3_action2(U8 e)
       /* ugly GOTOs */
 
       if (ent_ents[e].flags & ENT_FLG_TRIGRICK) {  /* reacts to rick */
-	/* wake up if triggered by rick */
-	if (u_trigbox(e, E_RICK_ENT.x + 0x0C, E_RICK_ENT.y + 0x0A))
-	  goto wakeup;
+	/* Co-op (Stage 3): any active, alive Rick can wake the entity. */
+	U8 r;
+	for (r = 0; r < RICK_MAX; r++) {
+	  ent_t *rent;
+	  if (!rick_active[r]) continue;
+	  if (R_STTST(r, E_RICK_STDEAD | E_RICK_STZOMBIE)) continue;
+	  rent = ricks_get_ent(r);
+	  if (u_trigbox(e, rent->x + 0x0C, rent->y + 0x0A))
+	    goto wakeup;
+	}
       }
 
       if (ent_ents[e].flags & ENT_FLG_TRIGSTOP) {  /* reacts to rick "stop" */
-	/* wake up if triggered by rick "stop" */
-	if (E_RICK_STTST(E_RICK_STSTOP) &&
-	    u_trigbox(e, e_rick_stop_x, e_rick_stop_y))
-	  goto wakeup;
+	/* Co-op (Stage 3): any active Rick's stop-mark can wake the entity. */
+	U8 r;
+	for (r = 0; r < RICK_MAX; r++) {
+	  if (!rick_active[r]) continue;
+	  if (R_STTST(r, E_RICK_STSTOP) &&
+	      u_trigbox(e, ricks[r].stop_x, ricks[r].stop_y))
+	    goto wakeup;
+	}
       }
 
       if (ent_ents[e].flags & ENT_FLG_TRIGBULLET) {  /* reacts to bullets */
@@ -684,8 +728,22 @@ e_them_t3_action2(U8 e)
       /* something triggered the entity: wake up */
       /* initialize step counter */
     wakeup:
-      if E_RICK_STTST(E_RICK_STZOMBIE)
-	return;
+      /*
+       * Co-op (Stage 3): the original guard was "P1 zombie => don't wake".
+       * Multi-Rick equivalent: skip wakeup only if every active Rick is
+       * dying/dead. Otherwise an entity triggered by P2/P3 would silently
+       * fail to start because P1 happened to be a zombie.
+       */
+      {
+	U8 r, anyAlive = FALSE;
+	for (r = 0; r < RICK_MAX; r++) {
+	  if (rick_active[r] && !R_STTST(r, E_RICK_STDEAD | E_RICK_STZOMBIE)) {
+	    anyAlive = TRUE;
+	    break;
+	  }
+	}
+	if (!anyAlive) return;
+      }
 #ifdef ENABLE_SOUND
 		/*
 		* FIXME the sound should come from a table, there are 10 of them
@@ -719,10 +777,17 @@ e_them_t3_action(U8 e)
 {
   e_them_t3_action2(e);
 
-  /* if lethal, can kill rick */
-  if ((ent_ents[e].n & ENT_LETHAL) &&
-      !E_RICK_STTST(E_RICK_STZOMBIE) && e_rick_boxtest(0, e)) {  /* CALL 1130 */
-    e_rick_gozombie(0); /* Stage 3 will iterate all active Ricks */
+  /* Co-op (Stage 3): if lethal, can kill any active, non-zombie Rick. */
+  if (ent_ents[e].n & ENT_LETHAL) {
+    U8 r;
+    for (r = 0; r < RICK_MAX; r++) {
+      if (!rick_active[r]) continue;
+      if (R_STTST(r, E_RICK_STDEAD | E_RICK_STZOMBIE)) continue;
+      if (e_rick_boxtest(r, e)) {  /* CALL 1130 */
+        e_rick_gozombie(r);
+        break;
+      }
+    }
   }
 }
 

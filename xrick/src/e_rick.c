@@ -40,8 +40,23 @@ rick_t ricks[RICK_MAX];
 U8 rick_count = 1;
 U8 rick_active[RICK_MAX] = { TRUE, FALSE, FALSE, FALSE };
 
-/* Convenience: the entity for Rick i. */
-#define R_ENT(i) ent_ents[ricks[(i)].ent_slot]
+/*
+ * Co-op (Stage 3): backing entities for Ricks 1..3. Approach (b) keeps the
+ * legacy ent_ents[] slot map untouched -- Rick 0 still lives at
+ * ent_ents[E_RICK_NO]; the other Ricks live here. ent_action() / ents_paintAll()
+ * iterate this array via the ricks_extra_* hooks.
+ */
+ent_t extra_rick_ents[RICK_MAX - 1];
+
+/* Convenience: the entity for Rick i. Rick 0 is in ent_ents, the rest here. */
+#define R_ENT(i) (*( (i) == 0 ? &ent_ents[E_RICK_NO] : &extra_rick_ents[(i)-1] ))
+
+ent_t *
+ricks_get_ent(U8 i)
+{
+	if (i == 0) return &ent_ents[E_RICK_NO];
+	return &extra_rick_ents[i - 1];
+}
 
 
 void
@@ -50,18 +65,112 @@ ricks_init(void)
 	U8 i;
 
 	memset(ricks, 0, sizeof(ricks));
+	memset(extra_rick_ents, 0, sizeof(extra_rick_ents));
 	rick_count = 1;
 	for (i = 0; i < RICK_MAX; i++)
 	{
 		rick_active[i] = (i == 0) ? TRUE : FALSE;
 		/*
-		 * ent_slot: Rick 0 uses the existing ent_ents[1] slot (E_RICK_NO).
-		 * Ricks 1-3 will be backed by a separate extra_rick_ents array
-		 * that is added in Stage 1.2 / Stage 3. For now leave them at 0
-		 * (sentinel) — they aren't simulated yet.
+		 * ent_slot is now informational only -- Rick 0 -> ent_ents[E_RICK_NO],
+		 * Ricks 1..3 -> extra_rick_ents[i-1]. All access goes through R_ENT().
 		 */
 		ricks[i].ent_slot = (i == 0) ? E_RICK_NO : 0;
 	}
+}
+
+
+/*
+ * Co-op (Stage 3): place every active extra Rick at Rick 0's current
+ * position with a fresh state. Used when loading / restarting a submap so
+ * all Ricks spawn together (per the locked-in design in COOP_ROADMAP.md).
+ */
+void
+ricks_spawn_at_p1(void)
+{
+	U8 i;
+	ent_t *p1 = &ent_ents[E_RICK_NO];
+
+	for (i = 1; i < RICK_MAX; i++)
+	{
+		ent_t *e = &extra_rick_ents[i - 1];
+
+		if (!rick_active[i])
+		{
+			/* Inactive Ricks must not draw or collide. */
+			e->n = 0;
+			e->sprite = 0;
+			continue;
+		}
+
+		/* Mirror the per-frame fields init() sets up for ent_ents[1]. */
+		e->x = p1->x;
+		e->y = p1->y;
+		e->w = 0x18;
+		e->h = 0x15;
+		e->n = 0x01;
+		e->sprite = 0x01;
+		e->front = FALSE;
+
+		/* Per-Rick simulation state -- fresh spawn, exactly like a brand-new game. */
+		R_STRST(i, E_RICK_STDEAD | E_RICK_STZOMBIE | E_RICK_STCRAWL |
+		           E_RICK_STJUMP | E_RICK_STCLIMB | E_RICK_STSTOP |
+		           E_RICK_STSHOOT);
+		ricks[i].offsx = 0;
+		ricks[i].offsy = 0;
+		ricks[i].ylow  = 0;
+		ricks[i].seq   = 0;
+		ricks[i].trigger      = FALSE;
+		ricks[i].scrawl       = FALSE;
+		ricks[i].atExit       = FALSE;
+		ricks[i].prev_stopped = FALSE;
+	}
+}
+
+
+/*
+ * Co-op (Stage 3): translate every extra Rick's y by dy. Called from
+ * scroll_up / scroll_down so Ricks 1..3 stay aligned to the world the same
+ * way ent_ents[] does. We only touch active extras; inactive slots have
+ * .n == 0 and are invisible anyway.
+ */
+void
+ricks_extra_scroll(S16 dy)
+{
+	U8 i;
+	for (i = 1; i < RICK_MAX; i++)
+	{
+		ent_t *e = &extra_rick_ents[i - 1];
+		if (!rick_active[i] || !e->n) continue;
+		e->y += dy;
+		/*
+		 * Mirror the "scrolled off the world" handling from scroller.c:
+		 * if the Rick has been pushed off the top, hide him. We don't
+		 * mark him DEAD -- this is a purely cosmetic clip, P1 can still
+		 * scroll back to him.
+		 */
+		if (e->y & 0x8000) {
+			e->n = 0;
+			e->sprite = 0;
+		}
+		else if (e->y > 0x0140) {
+			e->n = 0;
+			e->sprite = 0;
+		}
+	}
+}
+
+
+/*
+ * Co-op (Stage 3): clear prev_n on every extra Rick. ent_clprev() does the
+ * same for ent_ents[]; calling this from there keeps the dirty-rect
+ * bookkeeping in sync after a full screen redraw.
+ */
+void
+ricks_extra_clprev(void)
+{
+	U8 i;
+	for (i = 0; i < RICK_MAX - 1; i++)
+		extra_rick_ents[i].prev_n = 0;
 }
 
 
@@ -471,33 +580,42 @@ e_rick_action2(U8 i)
 
 
 /*
- * Action function for e_rick
+ * Per-Rick tick: action + post-action sprite selection.
  *
- * ASM 12CA
+ * Co-op (Stage 3): factored out of e_rick_action so we can re-use it for
+ * Ricks 1..3 (which live in extra_rick_ents and are NOT iterated by the
+ * ent_action() main loop).
  *
- * Called from ent_action via the actf table. e is the entity slot
- * (always E_RICK_NO == 1 in Stage 1, since only Rick 0 is in ent_ents).
- * Stage 3 will iterate the extra Ricks separately.
+ * Dead Ricks early-return with sprite cleared so they stop rendering and
+ * stop colliding -- a dead Rick stays dead until the last surviving Rick
+ * also dies (then CTRL_RICK in game.c restarts the submap).
  */
-void e_rick_action(U8 e)
+static void
+e_rick_tick(U8 i)
 {
-	U8 i;
 	ent_t *rent;
 
-	/*
-	 * Map the entity slot back to a Rick index. With only Rick 0 active
-	 * and using approach (b), this loop returns 0 for slot 1. Kept as a
-	 * loop (rather than hardcoded 0) so Stage 3 can drop in the extra
-	 * Ricks without touching this code.
-	 */
-	for (i = 0; i < RICK_MAX; i++)
-		if (rick_active[i] && ricks[i].ent_slot == e)
-			break;
-	if (i >= RICK_MAX) return;
+	if (R_STTST(i, E_RICK_STDEAD))
+	{
+		R_ENT(i).sprite = 0;
+		R_ENT(i).n = 0;  /* don't draw, don't collide */
+		return;
+	}
 
 	e_rick_action2(i);
 
 	ricks[i].scrawl = R_STTST(i, E_RICK_STCRAWL) ? TRUE : FALSE;
+
+	/*
+	 * If the action just transitioned the Rick to fully dead (zombie
+	 * fell off the screen), hide him this frame too.
+	 */
+	if (R_STTST(i, E_RICK_STDEAD))
+	{
+		R_ENT(i).sprite = 0;
+		R_ENT(i).n = 0;
+		return;
+	}
 
 	if (R_STTST(i, E_RICK_STZOMBIE))
 		return;
@@ -573,6 +691,38 @@ void e_rick_action(U8 e)
 
 
 /*
+ * Action function for e_rick (entity-action callback for slot E_RICK_NO).
+ *
+ * Co-op (Stage 3): only Rick 0 lives in ent_ents[]; Ricks 1..3 live in
+ * extra_rick_ents and are ticked by ricks_extra_action() (called from
+ * ent_action() right after the main entity loop). Keeping this wrapper
+ * means the actf table dispatch is unchanged.
+ */
+void e_rick_action(UNUSED(U8 e))
+{
+	if (!rick_active[0]) return;
+	e_rick_tick(0);
+}
+
+
+/*
+ * Co-op (Stage 3): tick every active extra Rick.
+ *
+ * Called from ent_action() AFTER the main loop (which already ticked Rick 0
+ * and the enemies/bullets/etc.). Order matters: roadmap 3.1 says "P1 first"
+ * to preserve scroll/camera behavior, and enemies must read Rick positions
+ * from this frame before the extras move next frame.
+ */
+void ricks_extra_action(void)
+{
+	U8 i;
+	for (i = 1; i < RICK_MAX; i++)
+		if (rick_active[i])
+			e_rick_tick(i);
+}
+
+
+/*
  * Save status
  *
  * ASM part of 0x0BBB
@@ -601,6 +751,16 @@ void e_rick_restore(U8 i)
 	rent->x = ricks[i].save_x;
 	rent->y = ricks[i].save_y;
 	rent->front = FALSE;
+	/*
+	 * Co-op (Stage 3): re-arm the extra Rick's entity in case it was
+	 * cleared by Stage 3 death-handling (sprite=0, n=0). Rick 0's entity
+	 * is already kept armed by game.c init(); doing it for everyone is a
+	 * no-op for Rick 0 and the right thing for Ricks 1..3.
+	 */
+	rent->n = 0x01;
+	rent->sprite = 0x01;
+	rent->w = 0x18;
+	rent->h = 0x15;
 	if (ricks[i].save_crawl)
 		R_STSET(i, E_RICK_STCRAWL);
 	else

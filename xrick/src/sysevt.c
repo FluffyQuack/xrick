@@ -84,12 +84,9 @@ dispatch_player_key(U16 key, U8 down)
 /*
  * Activate/deactivate Rick slots in response to a 1/2/3/4 keypress.
  *
- * Stage 2 limitation: Ricks 1..3 don't yet have entity slots backing them
- * (Stage 3 introduces extra_rick_ents). What we *can* do here is set
- * rick_count and rick_active[] correctly, snapshot P1's current world
- * position into the new Rick's save_x/save_y so the Stage 3 spawn code
- * has a starting point, and clear stale per-Rick state. The actual
- * ent_ents wiring + simulation loop lives in Stage 3.
+ * Stage 3: newly-activated Ricks get their backing ent_t (in
+ * extra_rick_ents) wired up here so they immediately tick, render and
+ * collide. Deactivated Ricks have their entity zeroed so they vanish.
  */
 static void
 set_rick_count(U8 n)
@@ -105,6 +102,8 @@ set_rick_count(U8 n)
 	for (i = 1; i < RICK_MAX; i++) {  /* slot 0 (P1) always active */
 		if (i < n) {
 			if (!rick_active[i]) {
+				ent_t *e = &extra_rick_ents[i - 1];
+
 				rick_active[i] = TRUE;
 				/* Clear all action-state bits; new Rick is a fresh spawn. */
 				R_STRST(i, E_RICK_STDEAD | E_RICK_STZOMBIE | E_RICK_STCRAWL |
@@ -124,14 +123,28 @@ set_rick_count(U8 n)
 				ricks[i].save_crawl = R_STTST(0, E_RICK_STCRAWL) ? TRUE : FALSE;
 				/* Forget any stale input that might have been buffered. */
 				control_status_p[i] = 0;
+
+				/*
+				 * Stage 3: arm the backing entity so the Rick is real
+				 * starting next tick. Mirrors the field set init() does
+				 * for ent_ents[1].
+				 */
+				e->x = p1ent->x;
+				e->y = p1ent->y;
+				e->w = 0x18;
+				e->h = 0x15;
+				e->n = 0x01;
+				e->sprite = 0x01;
+				e->front = FALSE;
 			}
 		} else {
 			if (rick_active[i]) {
+				ent_t *e = &extra_rick_ents[i - 1];
 				rick_active[i] = FALSE;
 				control_status_p[i] = 0;
-				/* Stage 3 will also zero this Rick's ent_ents[].n here so
-				 * the entity stops drawing/colliding. With ent_slot==0
-				 * today there's nothing to clear. */
+				/* Stop drawing / colliding immediately. */
+				e->n = 0;
+				e->sprite = 0;
 			}
 		}
 	}
