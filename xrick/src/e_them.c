@@ -342,7 +342,7 @@ e_them_t1_action(U8 e, U8 type)
   }
 
   /* bomb kills them */
-  if (e_bomb_lethal && e_bomb_hit(e)) {
+  if (bombs_any_hit(e)) {
     e_them_gozombie(e);
     return;
   }
@@ -681,7 +681,7 @@ e_them_t2_action(U8 e)
   }
 
   /* bomb kills them */
-  if (e_bomb_lethal && e_bomb_hit(e)) {
+  if (bombs_any_hit(e)) {
     e_them_gozombie(e);
     return;
   }
@@ -840,7 +840,7 @@ e_them_t3_action2(U8 e)
 
       if (ent_ents[e].flags & ENT_FLG_TRIGBOMB) {  /* reacts to bombs */
 	/* wake up if triggered by bomb */
-	if (e_bomb_lethal && u_trigbox(e, e_bomb_xc, e_bomb_yc))
+	if (bombs_any_trig(e))
 	  goto wakeup;
       }
 

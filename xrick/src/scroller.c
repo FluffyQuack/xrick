@@ -25,6 +25,7 @@
 #include "ents.h"
 #include "e_rick.h"
 #include "e_bullet.h"
+#include "e_bomb.h"
 
 static U8 period;
 
@@ -73,6 +74,7 @@ scroll_up(void)
   /* Co-op (Stage 3): keep extras in step with the world. */
   ricks_extra_scroll(-8);
   bullets_extra_scroll(-8);
+  bombs_extra_scroll(-8);
 
   /* display */
 	maps_paint();
@@ -144,6 +146,7 @@ scroll_down(void)
   /* Co-op (Stage 3): keep extras in step with the world. */
   ricks_extra_scroll(+8);
   bullets_extra_scroll(+8);
+  bombs_extra_scroll(+8);
 
   /* display */
 	maps_paint();

@@ -21,135 +21,164 @@
 #include "sounds.h"
 #include "e_bomb.h"
 #include "e_rick.h"
+#include "util.h"
 
 /* fixme is this for sounds only? */
 #include "game.h"
 
 
-
 /*
- * public vars (for performance reasons)
+ * Backing storage for Bombs 1..3 (Bomb 0 lives at ent_ents[E_BOMB_NO]).
+ * Same pattern as extra_rick_ents / extra_bullet_ents.
  */
-U8 e_bomb_lethal;
-U8 e_bomb_xc;
-U16 e_bomb_yc;
+ent_t extra_bomb_ents[RICK_MAX - 1];
 
-/*
- * private vars
- */
-U8 e_bomb_ticker;
-
-/*
- * Bomb hit test
- *
- * ASM 11CD
- * returns: TRUE/hit, FALSE/not
- */
-U8 e_bomb_hit(U8 e)
+ent_t *
+bombs_get_ent(U8 i)
 {
-	if (ent_ents[e].x > (E_BOMB_ENT.x >= 0xE0 ? 0xFF : E_BOMB_ENT.x + 0x20))
-			return FALSE;
-	if (ent_ents[e].x + ent_ents[e].w < (E_BOMB_ENT.x > 0x04 ? E_BOMB_ENT.x - 0x04 : 0))
-			return FALSE;
-	if (ent_ents[e].y > (E_BOMB_ENT.y + 0x1D))
-			return FALSE;
-	if (ent_ents[e].y + ent_ents[e].h < (E_BOMB_ENT.y > 0x0004 ? E_BOMB_ENT.y - 0x0004 : 0))
-			return FALSE;
-	return TRUE;
+	if (i == 0) return &ent_ents[E_BOMB_NO];
+	return &extra_bomb_ents[i - 1];
 }
 
 /*
- * Co-op (Stage 3): bomb-vs-rick test by pointer, so we can hit Ricks 1..3
- * (which don't live in ent_ents[]). Same comparison as e_bomb_hit but
- * dereferences a caller-supplied ent_t.
+ * A bomb is lethal during ticks 0x01..0x09 (the "exploding" window).
+ * Outside that range it's either still fizzing or already gone.
  */
-static U8 e_bomb_hit_ent(ent_t *ent)
+U8
+bombs_is_lethal(U8 i)
 {
-	if (ent->x > (E_BOMB_ENT.x >= 0xE0 ? 0xFF : E_BOMB_ENT.x + 0x20))
-			return FALSE;
-	if (ent->x + ent->w < (E_BOMB_ENT.x > 0x04 ? E_BOMB_ENT.x - 0x04 : 0))
-			return FALSE;
-	if (ent->y > (E_BOMB_ENT.y + 0x1D))
-			return FALSE;
-	if (ent->y + ent->h < (E_BOMB_ENT.y > 0x0004 ? E_BOMB_ENT.y - 0x0004 : 0))
-			return FALSE;
-	return TRUE;
+	ent_t *b = bombs_get_ent(i);
+	U8 t;
+	if (!b->n) return FALSE;
+	t = (U8)b->c1;
+	return (t > 0 && t < 0x0A) ? TRUE : FALSE;
 }
 
 /*
- * Co-op (Stage 3): test the bomb against every active, alive Rick.
+ * Bomb-vs-target hit test. Original e_bomb_hit() compared ent_ents[e]
+ * against the singleton E_BOMB_ENT; this version takes both pointers so
+ * the same comparison works for any of the RICK_MAX bombs and against
+ * Ricks 1..3 (which don't live in ent_ents[]).
  */
-static void e_bomb_kill_ricks(void)
+static U8
+bomb_hit_box(ent_t *bomb, ent_t *target)
+{
+	if (target->x > (bomb->x >= 0xE0 ? 0xFF : bomb->x + 0x20))
+		return FALSE;
+	if (target->x + target->w < (bomb->x > 0x04 ? bomb->x - 0x04 : 0))
+		return FALSE;
+	if (target->y > (bomb->y + 0x1D))
+		return FALSE;
+	if (target->y + target->h < (bomb->y > 0x0004 ? bomb->y - 0x0004 : 0))
+		return FALSE;
+	return TRUE;
+}
+
+U8
+bombs_any_hit(U8 e)
+{
+	U8 i;
+	for (i = 0; i < RICK_MAX; i++) {
+		if (!bombs_is_lethal(i)) continue;
+		if (bomb_hit_box(bombs_get_ent(i), &ent_ents[e]))
+			return TRUE;
+	}
+	return FALSE;
+}
+
+U8
+bombs_any_trig(U8 e)
+{
+	U8 i;
+	for (i = 0; i < RICK_MAX; i++) {
+		ent_t *b;
+		if (!bombs_is_lethal(i)) continue;
+		b = bombs_get_ent(i);
+		if (u_trigbox(e, b->x + 0x0C, b->y + 0x000A))
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/*
+ * Test this specific bomb against every active, alive Rick.
+ */
+static void
+bomb_kill_ricks(ent_t *bomb)
 {
 	U8 r;
 	for (r = 0; r < RICK_MAX; r++) {
 		if (!rick_active[r]) continue;
 		if (R_STTST(r, E_RICK_STDEAD | E_RICK_STZOMBIE)) continue;
-		if (e_bomb_hit_ent(ricks_get_ent(r)))
+		if (bomb_hit_box(bomb, ricks_get_ent(r)))
 			e_rick_gozombie(r);
 	}
 }
 
 /*
- * Initialize bomb
+ * Initialize bomb for the given owner Rick.
  */
-void e_bomb_init(U16 x, U16 y)
+void
+e_bomb_init(U16 x, U16 y, U8 owner)
 {
-    E_BOMB_ENT.n = 0x03;
-    E_BOMB_ENT.x = x;
-    E_BOMB_ENT.y = y;
-    e_bomb_ticker = E_BOMB_TICKER;
-    e_bomb_lethal = FALSE;
+	ent_t *b = bombs_get_ent(owner);
 
-    /*
-     * Atari ST dynamite sprites are not centered the
-     * way IBM PC sprites were ... need to adjust things a little bit
-     */
+	b->n = 0x03;
+	b->x = x;
+	b->y = y;
+	b->c1 = E_BOMB_TICKER;
+
+	/*
+	 * Atari ST dynamite sprites are not centered the
+	 * way IBM PC sprites were ... need to adjust things a little bit
+	 */
 #ifdef GFXST
-    E_BOMB_ENT.x += 4;
-    E_BOMB_ENT.y += 5;
+	b->x += 4;
+	b->y += 5;
 #endif
-
 }
 
 
 /*
- * Entity action
+ * Step a single bomb through one tick. Shared by Bomb 0 (slot 3) and
+ * the extras.
  *
  * ASM 18CA
  */
-void
-e_bomb_action(UNUSED(U8 e))
+static void
+bomb_step(ent_t *b)
 {
-	/* tick */
-	e_bomb_ticker--;
+	U8 ticker;
 
-	if (e_bomb_ticker == 0)
+	/* tick */
+	b->c1--;
+	ticker = (U8)b->c1;
+
+	if (ticker == 0)
 	{
 		/*
 		 * end: deactivate
 		 */
-		E_BOMB_ENT.n = 0;
-		e_bomb_lethal = FALSE;
+		b->n = 0;
 	}
-	else if (e_bomb_ticker >= 0x0A)
+	else if (ticker >= 0x0A)
 	{
 		/*
 		 * ticking
 		 */
 #ifdef ENABLE_SOUND
-		if ((e_bomb_ticker & 0x03) == 0x02)
+		if ((ticker & 0x03) == 0x02)
 			syssnd_play(WAV_BOMBSHHT, 1);
 #endif
 #ifdef GFXST
 		/* ST bomb sprites sequence is longer */
-		if (e_bomb_ticker < 40)
-			E_BOMB_ENT.sprite = 0x99 + 19 - (e_bomb_ticker >> 1);
+		if (ticker < 40)
+			b->sprite = 0x99 + 19 - (ticker >> 1);
 		else
 #endif
-		E_BOMB_ENT.sprite = (e_bomb_ticker & 0x01) ? 0x23 : 0x22;
+		b->sprite = (ticker & 0x01) ? 0x23 : 0x22;
 	}
-	else if (e_bomb_ticker == 0x09)
+	else if (ticker == 0x09)
 	{
 		/*
 		 * explode
@@ -158,18 +187,15 @@ e_bomb_action(UNUSED(U8 e))
 		syssnd_play(WAV_EXPLODE, 1);
 #endif
 #ifdef GFXPC
-		E_BOMB_ENT.sprite = 0x24 + 4 - (e_bomb_ticker >> 1);
+		b->sprite = 0x24 + 4 - (ticker >> 1);
 #endif
 #ifdef GFXST
 		/* See above: fixing alignment */
-		E_BOMB_ENT.x -= 4;
-		E_BOMB_ENT.y -= 5;
-		E_BOMB_ENT.sprite = 0xa8 + 4 - (e_bomb_ticker >> 1);
+		b->x -= 4;
+		b->y -= 5;
+		b->sprite = 0xa8 + 4 - (ticker >> 1);
 #endif
-		e_bomb_xc = E_BOMB_ENT.x + 0x0C;
-		e_bomb_yc = E_BOMB_ENT.y + 0x000A;
-		e_bomb_lethal = TRUE;
-		e_bomb_kill_ricks();
+		bomb_kill_ricks(b);
 	}
 	else
 	{
@@ -177,16 +203,69 @@ e_bomb_action(UNUSED(U8 e))
 		 * exploding
 		 */
 #ifdef GFXPC
-		E_BOMB_ENT.sprite = 0x24 + 4 - (e_bomb_ticker >> 1);
+		b->sprite = 0x24 + 4 - (ticker >> 1);
 #endif
 #ifdef GFXST
-		E_BOMB_ENT.sprite = 0xa8 + 4 - (e_bomb_ticker >> 1);
+		b->sprite = 0xa8 + 4 - (ticker >> 1);
 #endif
 		/* exploding, hence lethal */
-		e_bomb_kill_ricks();
+		bomb_kill_ricks(b);
+	}
+}
+
+/*
+ * Entity action for Bomb 0 (called from ent_actf[3] by ent_action()).
+ */
+void
+e_bomb_action(UNUSED(U8 e))
+{
+	bomb_step(&ent_ents[E_BOMB_NO]);
+}
+
+/*
+ * Co-op: tick Bombs 1..3. Called from ent_action() after the main entity
+ * loop (mirrors ricks_extra_action / bullets_extra_action).
+ */
+void
+bombs_extra_action(void)
+{
+	U8 i;
+	for (i = 0; i < RICK_MAX - 1; i++) {
+		if (extra_bomb_ents[i].n)
+			bomb_step(&extra_bomb_ents[i]);
+	}
+}
+
+/*
+ * Co-op: clear prev_n for extra bombs.
+ */
+void
+bombs_extra_clprev(void)
+{
+	U8 i;
+	for (i = 0; i < RICK_MAX - 1; i++)
+		extra_bomb_ents[i].prev_n = 0;
+}
+
+/*
+ * Co-op: translate extra bombs in y when the world scrolls. Same
+ * "off the world -> hide" treatment scroller.c applies to ent_ents[].
+ */
+void
+bombs_extra_scroll(S16 dy)
+{
+	U8 i;
+	for (i = 0; i < RICK_MAX - 1; i++) {
+		ent_t *b = &extra_bomb_ents[i];
+		if (!b->n) continue;
+		b->y += dy;
+		if (b->y & 0x8000) {
+			b->n = 0;
+		}
+		else if (b->y > 0x0140) {
+			b->n = 0;
+		}
 	}
 }
 
 /* eof */
-
-

@@ -116,7 +116,7 @@ e_box_action(U8 e)
 					break;
 				}
 			}
-			if (!hit && e_bomb_lethal && e_bomb_hit(e)) {
+			if (!hit && bombs_any_hit(e)) {
 				/* bomb: explode */
 				explode(e);
 			}

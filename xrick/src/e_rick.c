@@ -471,8 +471,8 @@ e_rick_action2(U8 i)
   ricks[i].seq = 0; /* reset */
 
   if (cs == (CONTROL_FIRE|CONTROL_DOWN)) {  /* bomb */
-    /* already a bomb ticking ... that's enough */
-    if (E_BOMB_ENT.n)
+    /* already a bomb ticking for this Rick ... that's enough */
+    if (bombs_get_ent(i)->n)
       return;
     /* else use a bomb, if any available */
     if (!env_bombs)
@@ -481,7 +481,7 @@ e_rick_action2(U8 i)
       env_bombs--;
 
     /* initialize bomb */
-    e_bomb_init(rent->x, rent->y);
+    e_bomb_init(rent->x, rent->y, i);
     return;
   }
 
