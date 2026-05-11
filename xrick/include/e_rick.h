@@ -130,6 +130,7 @@ extern ent_t *ricks_get_ent(U8 i);
 extern void ricks_extra_action(void);
 extern void ricks_extra_clprev(void);
 extern void ricks_extra_scroll(S16 dy);
+extern void ricks_kill_oob(void);
 extern void ricks_spawn_at(U8 anchor);
 
 #endif

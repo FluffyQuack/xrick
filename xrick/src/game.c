@@ -155,6 +155,83 @@ static void freeData(void);
 static void game_paintEntities();
 static void game_save(void);
 
+/*
+ * Co-op camera target.
+ *
+ * The scroll-trigger logic compares the returned y against the 0x60 / 0xCC
+ * deadzone (>= 0xCC -> SCROLL_UP, <= 0x60 -> SCROLL_DOWN). With more than
+ * one alive Rick we follow the "leader" -- whichever Rick has progressed
+ * furthest from the submap's spawn point. Distance is measured in absolute
+ * world coordinates (map_frow*8 + y, plus x), which scroll preserves, so
+ * leader identity is stable across frames and the camera doesn't bounce.
+ * Any teammate who can't keep up gets pushed off-world by the scroll and
+ * retired by ricks_kill_oob() in scroller.c.
+ */
+#define CAMERA_NO_TARGET  0xFFFF
+
+/*
+ * Spawn anchor for the current submap, in absolute world coordinates.
+ * Recorded by camera_record_spawn() after each ricks_spawn_at() call.
+ * Absolute y = map_frow*8 + e->y is invariant under scroll (frow++ and
+ * y-=8 cancel), so distances computed against this anchor remain valid
+ * for the lifetime of the submap.
+ */
+static U16 camera_spawn_abs_x = 0;
+static U16 camera_spawn_abs_y = 0;
+
+static void camera_record_spawn(U8 anchor)
+{
+	ent_t *e = ricks_get_ent(anchor);
+	camera_spawn_abs_x = e->x;
+	camera_spawn_abs_y = (U16)(map_frow * 8) + e->y;
+}
+
+static U16 camera_target_y(void)
+{
+	U8  r;
+	U8  best_idx = RICK_MAX;
+	U16 best_y = 0;
+	U32 best_dist = 0;
+
+	for (r = 0; r < RICK_MAX; r++)
+	{
+		ent_t *e;
+		U16 y, abs_y;
+		U32 dx, dy, dist;
+
+		if (!rick_active[r]) continue;
+		if (R_STTST(r, E_RICK_STDEAD | E_RICK_STZOMBIE)) continue;
+
+		e = ricks_get_ent(r);
+		y = e->y;
+		/* Skip Ricks already off the world (reachable only with the
+		 * invincibility cheat, since ricks_kill_oob retires them
+		 * otherwise). Their wrapped y would corrupt the distance calc. */
+		if ((y & 0x8000) || y > 0x0140) continue;
+
+		abs_y = (U16)(map_frow * 8) + y;
+		dx = (e->x >= camera_spawn_abs_x)
+		     ? (U32)(e->x - camera_spawn_abs_x)
+		     : (U32)(camera_spawn_abs_x - e->x);
+		dy = (abs_y >= camera_spawn_abs_y)
+		     ? (U32)(abs_y - camera_spawn_abs_y)
+		     : (U32)(camera_spawn_abs_y - abs_y);
+		dist = dx + dy;
+
+		/* Prefer lower-indexed Rick on ties so leader identity is
+		 * deterministic at submap entry (everyone starts at distance 0). */
+		if (best_idx == RICK_MAX || dist > best_dist)
+		{
+			best_idx  = r;
+			best_dist = dist;
+			best_y    = y;
+		}
+	}
+
+	if (best_idx == RICK_MAX) return CAMERA_NO_TARGET;
+	return best_y;
+}
+
 
 /*
  * game_toggleCheat
@@ -494,6 +571,7 @@ static void game_cycle(void)
 				 * snapshot used by restart() captures the shared spawn.
 				 */
 				ricks_spawn_at(0);
+				camera_record_spawn(0);
 				game_save();
 				fb_clear();                 /* clear buffer */
 				//ent_clprev();
@@ -579,6 +657,12 @@ static void game_cycle(void)
 			{
 				ent_action();      /* run entities */
 				e_them_rndseed++;  /* (0270) */
+				/* Co-op: retire any Rick who walked off the world
+				 * under their own power (the scroller's kill_oob
+				 * only fires during scroll). Without this a
+				 * laggard wandering past y > 0x140 stays "alive"
+				 * with corrupt coords and crashes later. */
+				ricks_kill_oob();
 				game_state = CTRL_PAUSE;
 			}
 			break;
@@ -668,14 +752,17 @@ static void game_cycle(void)
 
 
 		case CTRL_SCROLL:
-			if (!E_RICK_STTST(E_RICK_STZOMBIE))
 			{
-				if (ent_ents[1].y >= 0xcc)
+				U16 cam_y = camera_target_y();
+				if (cam_y == CAMERA_NO_TARGET)
+				{
+					game_state = CTRL_ACTION;
+				}
+				else if (cam_y >= 0xcc)
 				{
 					game_state = SCROLL_UP;
 				}
-				else
-				if (ent_ents[1].y <= 0x60)
+				else if (cam_y <= 0x60)
 				{
 					game_state = SCROLL_DOWN;
 				}
@@ -683,10 +770,6 @@ static void game_cycle(void)
 				{
 					game_state = CTRL_ACTION;
 				}
-			}
-			else
-			{
-				game_state = CTRL_ACTION;
 			}
 			break;
 
@@ -754,6 +837,7 @@ static void game_cycle(void)
 			 * non-P1 player drove the exit) snap to that position.
 			 */
 			ricks_spawn_at(exit_trigger);
+			camera_record_spawn(exit_trigger);
 			exit_trigger = 0;
 			game_save();                        /* save data in case of a restart */
 			fb_clear();
@@ -911,6 +995,7 @@ init(void)
    * load-bearing as soon as the player presses 2/3/4 mid-game.
    */
   ricks_spawn_at(0);
+  camera_record_spawn(0);
 
   map_resetMarks();
 }

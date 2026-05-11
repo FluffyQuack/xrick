@@ -93,6 +93,19 @@ u_envtest(U16 x, U16 y, U8 crawl, U8 *rc0, U8 *rc1)
 {
   U8 i, xx;
 
+  /*
+   * Co-op safety: a laggard Rick in co-op can walk off the world before
+   * ricks_kill_oob() retires them (the kill check runs after ent_action,
+   * but u_envtest is called from inside it). If y is past the map_map
+   * bounds (rows 0..0x29 safe given we index [y..y+2]), return
+   * "empty space" so the caller doesn't crash. The OOB Rick will be
+   * zombified by ricks_kill_oob immediately after ent_action.
+   */
+  if ((y & 0x8000) || y > 0x0140) {
+    *rc0 = *rc1 = 0;
+    return;
+  }
+
   /* prepare for ent #0 test */
   ent_ents[ENT_ENTSNUM].x = x;
   ent_ents[ENT_ENTSNUM].y = y;

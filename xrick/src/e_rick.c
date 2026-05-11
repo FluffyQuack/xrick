@@ -177,6 +177,46 @@ ricks_extra_scroll(S16 dy)
 
 
 /*
+ * Co-op: kill any Rick whose y has been pushed off the playable map by a
+ * scroll. With the midpoint-with-fallback camera one player can drag the
+ * camera far enough that another player is no longer on the world; rather
+ * than leaving them stranded as an invisible cosmetic clip (the old
+ * single-player assumption was "P1 drives the camera, others can't be
+ * dragged off"), we mark them STDEAD so CTRL_RICK can decide whether the
+ * survivors trigger a restart. Skipped under the invincibility cheat to
+ * preserve "can't die" semantics.
+ *
+ * Called from scroll_up / scroll_down right after the entity translation.
+ */
+void
+ricks_kill_oob(void)
+{
+	U8 i;
+	if (env_invicible) return;
+	for (i = 0; i < RICK_MAX; i++)
+	{
+		ent_t *e;
+		if (!rick_active[i]) continue;
+		if (R_STTST(i, E_RICK_STDEAD | E_RICK_STZOMBIE)) continue;
+		e = ricks_get_ent(i);
+		if ((e->y & 0x8000) || e->y > 0x0140)
+		{
+			/*
+			 * Snap to the visible-band edge nearest the death so the
+			 * standard fly-into-screen animation appears close to where
+			 * the player actually died. Upward OOB (wrapped negative)
+			 * -> top edge; downward OOB (past 0x140) -> bottom edge.
+			 * Without the snap, e_rick_z_action would flip STDEAD on
+			 * its very first tick because y is already off the world.
+			 */
+			e->y = (e->y & 0x8000) ? 0x40 : 0x100;
+			e_rick_gozombie(i);
+		}
+	}
+}
+
+
+/*
  * Co-op (Stage 3): clear prev_n on every extra Rick. ent_clprev() does the
  * same for ent_ents[]; calling this from there keeps the dirty-rect
  * bookkeeping in sync after a full screen redraw.
@@ -619,6 +659,22 @@ e_rick_tick(U8 i)
 	}
 
 	e_rick_action2(i);
+
+	/*
+	 * Co-op: if action2 walked this Rick off the world (laggard climbing
+	 * past y=0, or otherwise stepping outside map_map bounds), retire
+	 * them immediately so the rest of this tick -- enemy collision
+	 * checks, painting, the camera target scan -- never sees wrapped
+	 * coords. u_envtest already swallows OOB lookups to prevent the
+	 * initial crash; this stops the bad state from leaking further.
+	 */
+	if (!env_invicible &&
+	    !R_STTST(i, E_RICK_STDEAD | E_RICK_STZOMBIE) &&
+	    ((R_ENT(i).y & 0x8000) || R_ENT(i).y > 0x0140))
+	{
+		R_ENT(i).y = (R_ENT(i).y & 0x8000) ? 0x40 : 0x100;
+		e_rick_gozombie(i);
+	}
 
 	ricks[i].scrawl = R_STTST(i, E_RICK_STCRAWL) ? TRUE : FALSE;
 

@@ -75,6 +75,8 @@ scroll_up(void)
   ricks_extra_scroll(-8);
   bullets_extra_scroll(-8);
   bombs_extra_scroll(-8);
+  /* Co-op: any Rick the scroll pushed off the world dies. */
+  ricks_kill_oob();
 
   /* display */
 	maps_paint();
@@ -147,6 +149,8 @@ scroll_down(void)
   ricks_extra_scroll(+8);
   bullets_extra_scroll(+8);
   bombs_extra_scroll(+8);
+  /* Co-op: any Rick the scroll pushed off the world dies. */
+  ricks_kill_oob();
 
   /* display */
 	maps_paint();
