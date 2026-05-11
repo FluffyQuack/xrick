@@ -22,6 +22,7 @@
 
 int inifile_playerCount = 1;
 int inifile_linearFilter = 1;
+int inifile_scale = 2;
 
 static void
 trim(char *s)
@@ -81,14 +82,20 @@ inifile_load(const char *path)
 		else if (!strcasecmp(key, "LinearFilter")) {
 			inifile_linearFilter = atoi(val) ? 1 : 0;
 		}
+		else if (!strcasecmp(key, "Scale")) {
+			n = atoi(val);
+			if (n < 1) n = 1;
+			if (n > 16) n = 16;
+			inifile_scale = n;
+		}
 		else {
 			sys_printf("xrick/inifile: unknown key '%s'\n", key);
 		}
 	}
 
 	fclose(f);
-	sys_printf("xrick/inifile: loaded '%s' (PlayerCount=%d, LinearFilter=%d)\n",
-	           path, inifile_playerCount, inifile_linearFilter);
+	sys_printf("xrick/inifile: loaded '%s' (PlayerCount=%d, LinearFilter=%d, Scale=%d)\n",
+	           path, inifile_playerCount, inifile_linearFilter, inifile_scale);
 }
 
 void
@@ -112,6 +119,7 @@ inifile_save(const char *path)
 
 	fprintf(f, "PlayerCount = %d\n", inifile_playerCount);
 	fprintf(f, "LinearFilter = %d\n", inifile_linearFilter);
+	fprintf(f, "Scale = %d\n", inifile_scale);
 
 	fclose(f);
 	sys_printf("xrick/inifile: saved '%s'\n", path);

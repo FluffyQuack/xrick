@@ -62,7 +62,7 @@ static U16 fb_width, fb_height;
 
 static U8 zoom = 0; /* actual zoom level */
 static U8 wmzoom = SYSVID_ZOOM; /* window mode zoom level */
-static U8 mxzoom = SYSVID_ZOOM * 2; /* max zoom level */
+static U8 mxzoom = 16; /* max zoom level */
 
 
 
@@ -158,6 +158,10 @@ void sysvid_init(U16 width, U16 height)
 
 	fb_width = width;
 	fb_height = height;
+
+	/* ini-configured window scale overrides the default */
+	if (inifile_scale >= 1 && inifile_scale <= mxzoom)
+		wmzoom = (U8)inifile_scale;
 
 	IFDEBUG_VIDEO(sys_printf("xrick/video: start\n"););
 

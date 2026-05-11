@@ -19,6 +19,10 @@ extern int inifile_playerCount;
  * (sharp pixels). Default 1 to preserve previous behaviour. */
 extern int inifile_linearFilter;
 
+/* Window scale multiplier for graphics/resolution. The window is sized
+ * to fb_width*Scale by fb_height*Scale. Default 2 matches SYSVID_ZOOM. */
+extern int inifile_scale;
+
 /* Load and apply the given ini file. Safe to call when the file does
  * not exist (silently no-op). */
 void inifile_load(const char *path);
