@@ -69,6 +69,9 @@
     <ClInclude Include="include\img.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="include\inifile.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="include\maps.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -201,6 +204,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\img.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\inifile.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\maps.c">

@@ -16,6 +16,7 @@
 #include "sysvid.h"
 #include "game.h"
 #include "fb.h"
+#include "inifile.h"
 
 #include <SDL.h>
 #include <signal.h>
@@ -55,6 +56,8 @@ sys_init(int argc, char** argv)
 	setConsole();
 	sys_printf("xrick\n");
 
+	inifile_load("xrick.ini");
+
 	sysarg_init(argc, argv);
 
 	// FIXME not writing to stdxxx.txt files anymore?
@@ -91,6 +94,8 @@ sys_init(int argc, char** argv)
 void
 sys_shutdown(void)
 {
+	inifile_save("xrick.ini");
+
 #ifdef ENABLE_SOUND
 	syssnd_shutdown();
 #endif
@@ -121,7 +126,7 @@ main(int argc, char *argv[])
 
 	game_run(path);
 
-	sys_shutdown();
+	sys_shutdown(); //TODO: I'm pretty sure we can remove this call. I think this ends up being called twice as we do atexit(sys_shutdown); earlier
 	return 0;
 }
 

@@ -14,6 +14,7 @@
 #include "system.h"
 #include "config.h"
 #include "env.h"
+#include "inifile.h"
 
 #include "e_rick.h"
 
@@ -64,12 +65,16 @@ ricks_init(void)
 {
 	U8 i;
 
+	U8 want = (U8)inifile_playerCount;
+	if (want < 1) want = 1;
+	if (want > RICK_MAX) want = RICK_MAX;
+
 	memset(ricks, 0, sizeof(ricks));
 	memset(extra_rick_ents, 0, sizeof(extra_rick_ents));
-	rick_count = 1;
+	rick_count = want;
 	for (i = 0; i < RICK_MAX; i++)
 	{
-		rick_active[i] = (i == 0) ? TRUE : FALSE;
+		rick_active[i] = (i < want) ? TRUE : FALSE;
 		/*
 		 * ent_slot is now informational only -- Rick 0 -> ent_ents[E_RICK_NO],
 		 * Ricks 1..3 -> extra_rick_ents[i-1]. All access goes through R_ENT().

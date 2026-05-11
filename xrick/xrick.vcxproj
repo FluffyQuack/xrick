@@ -156,6 +156,7 @@
     <ClInclude Include="include\fb.h" />
     <ClInclude Include="include\game.h" />
     <ClInclude Include="include\img.h" />
+    <ClInclude Include="include\inifile.h" />
     <ClInclude Include="include\maps.h" />
     <ClInclude Include="include\pics.h" />
     <ClInclude Include="include\rects.h" />
@@ -202,6 +203,7 @@
     <ClCompile Include="src\fb.c" />
     <ClCompile Include="src\game.c" />
     <ClCompile Include="src\img.c" />
+    <ClCompile Include="src\inifile.c" />
     <ClCompile Include="src\maps.c" />
     <ClCompile Include="src\rects.c" />
     <ClCompile Include="src\scroller.c" />
