@@ -15,6 +15,10 @@
  * Equivalent to pressing 1/2/3/4 on the keyboard. */
 extern int inifile_playerCount;
 
+/* Texture scaling filter: 1 = bilinear (smooth), 0 = nearest-neighbour
+ * (sharp pixels). Default 1 to preserve previous behaviour. */
+extern int inifile_linearFilter;
+
 /* Load and apply the given ini file. Safe to call when the file does
  * not exist (silently no-op). */
 void inifile_load(const char *path);

@@ -21,6 +21,7 @@
 #endif
 
 int inifile_playerCount = 1;
+int inifile_linearFilter = 1;
 
 static void
 trim(char *s)
@@ -77,14 +78,17 @@ inifile_load(const char *path)
 			if (n > RICK_MAX) n = RICK_MAX;
 			inifile_playerCount = n;
 		}
+		else if (!strcasecmp(key, "LinearFilter")) {
+			inifile_linearFilter = atoi(val) ? 1 : 0;
+		}
 		else {
 			sys_printf("xrick/inifile: unknown key '%s'\n", key);
 		}
 	}
 
 	fclose(f);
-	sys_printf("xrick/inifile: loaded '%s' (PlayerCount=%d)\n",
-	           path, inifile_playerCount);
+	sys_printf("xrick/inifile: loaded '%s' (PlayerCount=%d, LinearFilter=%d)\n",
+	           path, inifile_playerCount, inifile_linearFilter);
 }
 
 void
@@ -107,6 +111,7 @@ inifile_save(const char *path)
 	}
 
 	fprintf(f, "PlayerCount = %d\n", inifile_playerCount);
+	fprintf(f, "LinearFilter = %d\n", inifile_linearFilter);
 
 	fclose(f);
 	sys_printf("xrick/inifile: saved '%s'\n", path);

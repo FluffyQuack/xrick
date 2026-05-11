@@ -31,6 +31,7 @@
 #include "debug.h"
 #include "fb.h"
 #include "img.h"
+#include "inifile.h"
 
 
 #ifdef __MSVC__
@@ -253,7 +254,7 @@ IFDEBUG_VIDEO(
 	SDL_RenderPresent(renderer);
 
 	// scaling hint - before texture creation
-	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, inifile_linearFilter ? "1" : "0");
 
 	// fixme this is temp
 	// not using rects for now but we could ...
