@@ -38,6 +38,20 @@ void sprites_paint(U8, U16, U16);
 void sprites_paint2(U8, U16, U16, U8);
 void sprites_clear(U16, U16);
 
+/*
+ * Build per-Rick hue-shifted hat palette entries. Must be called after the
+ * regular game palette is loaded (fb_initPalette). Idempotent.
+ */
+void sprites_initHatPalette(void);
+
+/*
+ * Co-op: overlay the top 6 rows of Rick's sprite using the per-Rick
+ * hat-tinted palette. Call AFTER sprites_paint2 has drawn the Rick. The
+ * outline colour (palette index 4 = RGB 32,36,32) is left untouched.
+ * rickIndex 0 leaves Rick 0 unchanged.
+ */
+void sprites_paintHat(U8 rickIndex, U8 spriteNumber, U16 x, U16 y, U8 front, U8 hatRows);
+
 #ifdef GFXPC
 
 #define SPRITES_NBR_SPRITES (0x9b)

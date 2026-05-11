@@ -30,6 +30,7 @@ extern void sysvid_setDisplayPalette(void);
 //extern void sysvid_setPalette(img_color_t*, U16);
 extern void sysvid_setPaletteFromImg(img_t* img);
 extern void sysvid_setPaletteFromRGB(U8* r, U8* g, U8* b, U16 n);
+extern void sysvid_setPaletteEntry(U16 idx, U8 r, U8 g, U8 b);
 
 extern U8 *sysvid_fb;  /* frame buffer */
 extern void sysvid_setGamma(U8 g);

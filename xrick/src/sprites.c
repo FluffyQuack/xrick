@@ -21,6 +21,46 @@
 #include "fb.h"
 #include "maps.h"
 #include "tiles.h"
+#include "sysvid.h"
+#include "inifile.h"
+#include "e_rick.h" /* RICK_MAX */
+
+#include <math.h>
+
+/*
+ * Per-Rick hat tinting.
+ *
+ * The original game palette holds 32 colours in fb's RED/GREEN/BLUE tables
+ * (16 base + 16 highlight). For each non-anchor Rick we register 16 extra
+ * palette slots holding hue-shifted versions of the 16 base colours, and a
+ * remap table that translates a sprite's lower-nibble palette index into the
+ * tinted palette index. The outline colour (RGB 32,36,32 = palette index 4)
+ * is preserved so the silhouette stays consistent across Ricks.
+ *
+ * sprites_paintHat() re-draws the top HAT_ROWS pixel rows of the sprite
+ * using full-byte palette indices (8-bit framebuffer entries past the
+ * original 0..31 range), overwriting only non-outline hat pixels that the
+ * normal paint just produced.
+ */
+/*
+ * Per-Rick hat palette slots must not have bit 0x10 set: sprites_paint2
+ * preserves that bit across writes (it's the "highlight"/invincibility
+ * flag in the original palette). If a hat slot had bit 0x10 set, a later
+ * sprite drawn on top of it would mistakenly inherit highlight and the
+ * pixel would land in the bright half of the palette -- e.g. the outline
+ * (index 4) would render as index 0x14 instead, which is the bug where
+ * outlines turn whitish when Ricks overlap. We avoid that by spacing the
+ * per-Rick blocks at 32 (instead of 16), so every slot we use is in a
+ * range with bit 0x10 clear.
+ */
+#define HAT_PAL_BASE 32           /* first extra palette slot we own */
+#define HAT_PAL_PER_RICK 32       /* stride per Rick (16 colours + 16-byte gap) */
+#define HAT_OUTLINE_INDEX 4       /* palette index of the (32,36,32) outline */
+
+/* remap[r][i] = palette index to write for sprite low-nibble i on Rick r.
+ * 0 means "skip" (transparent / outline / no remap available). */
+static U8 hat_remap[RICK_MAX][16];
+static U8 hat_palette_ready = 0;
 
 
 
@@ -72,9 +112,14 @@ void sprites_paint(U8 spriteNumber, U16 x, U16 y)
 		for (j = 0; j < 4; j++) /* 4 tile columns */
 		{
 			d = sprites_data[spriteNumber][g++];
-			/* map ST 4 bits per pixel to frame buffer 8 bits per pixels */
+			/* map ST 4 bits per pixel to frame buffer 8 bits per pixels.
+			 * Only preserve the highlight bit (0x10); leaving the rest of
+			 * the high nibble in would smuggle stray indices from the
+			 * per-Rick hat palette (slots 32+) back into the sprite, which
+			 * shows up as Rick-A's outline turning white when drawn on top
+			 * of Rick-B's tinted hat pixels. */
 			for (k = 8; k--; d >>= 4)
-				if (d & 0x0f) f[k] = (f[k] & 0xf0) | (d & 0x0f);
+				if (d & 0x0f) f[k] = (f[k] & 0x10) | (d & 0x0f);
 			f += 8;
 		}
 		fb += FB_WIDTH;
@@ -238,7 +283,7 @@ void sprites_paint2(U8 spriteNumber, U16 x, U16 y, U8 front)
 			} \
 			if (c >= width || x + c < x0) continue; \
 			if (!front && !env_highlight && (flg & MAP_EFLG_FGND)) continue; \
-			if (d & 0x0f) fb[i] = (fb[i] & 0xf0) | (d & 0x0f); \
+			if (d & 0x0f) fb[i] = (fb[i] & 0x10) | (d & 0x0f); \
 			if (env_highlight) fb[i] |= 0x10; \
 		}
 
@@ -306,5 +351,224 @@ sprites_clear(U16 x, U16 y)
 		}
 	}
 }
+
+/*
+ * Hue-shift one RGB colour by `deg` degrees. Uses HSV in [0,1] space.
+ */
+static void
+hat_hueShift(U8 r_in, U8 g_in, U8 b_in, int deg, U8 *r_out, U8 *g_out, U8 *b_out)
+{
+	float r = r_in / 255.0f;
+	float g = g_in / 255.0f;
+	float b = b_in / 255.0f;
+	float mx = r; if (g > mx) mx = g; if (b > mx) mx = b;
+	float mn = r; if (g < mn) mn = g; if (b < mn) mn = b;
+	float d = mx - mn;
+	float h = 0.0f, s = (mx == 0.0f) ? 0.0f : d / mx;
+	float v = mx;
+	float c, x, m, rp, gp, bp;
+
+	if (d != 0.0f) {
+		if (mx == r)      h = (g - b) / d + (g < b ? 6.0f : 0.0f);
+		else if (mx == g) h = (b - r) / d + 2.0f;
+		else              h = (r - g) / d + 4.0f;
+		h *= 60.0f;
+	}
+	h = fmodf(h + (float)deg + 360.0f * 10.0f, 360.0f);
+
+	c = v * s;
+	x = c * (1.0f - fabsf(fmodf(h / 60.0f, 2.0f) - 1.0f));
+	m = v - c;
+	if      (h <  60.0f) { rp = c; gp = x; bp = 0; }
+	else if (h < 120.0f) { rp = x; gp = c; bp = 0; }
+	else if (h < 180.0f) { rp = 0; gp = c; bp = x; }
+	else if (h < 240.0f) { rp = 0; gp = x; bp = c; }
+	else if (h < 300.0f) { rp = x; gp = 0; bp = c; }
+	else                 { rp = c; gp = 0; bp = x; }
+
+	*r_out = (U8)((rp + m) * 255.0f + 0.5f);
+	*g_out = (U8)((gp + m) * 255.0f + 0.5f);
+	*b_out = (U8)((bp + m) * 255.0f + 0.5f);
+}
+
+
+void
+sprites_initHatPalette(void)
+{
+	U8 r, g, b;
+	U8 nr, ng, nb;
+	U8 ricki, ci;
+	U16 slot;
+
+	for (ricki = 0; ricki < RICK_MAX; ricki++)
+	{
+		int deg = inifile_hueShift[ricki];
+
+		/* Hue shift of 0 means "vanilla": leave the remap table empty so
+		 * sprites_paintHat() short-circuits and nothing gets overdrawn. */
+		if (deg == 0)
+		{
+			for (ci = 0; ci < 16; ci++)
+				hat_remap[ricki][ci] = 0;
+			continue;
+		}
+
+		for (ci = 0; ci < 16; ci++)
+		{
+			if (ci == HAT_OUTLINE_INDEX)
+			{
+				/* Outline: never remap, never overwrite. */
+				hat_remap[ricki][ci] = 0;
+				continue;
+			}
+
+			fb_getPaletteRGB(ci, &r, &g, &b);
+
+			/* Index 0 in the base palette is transparent/background black --
+			 * sprites_paint2 skips it anyway, but be defensive. */
+			if (ci == 0)
+			{
+				hat_remap[ricki][ci] = 0;
+				continue;
+			}
+
+			hat_hueShift(r, g, b, deg, &nr, &ng, &nb);
+
+			slot = (U16)HAT_PAL_BASE + (U16)ricki * HAT_PAL_PER_RICK + ci;
+			sysvid_setPaletteEntry(slot, nr, ng, nb);
+			hat_remap[ricki][ci] = (U8)slot;
+		}
+	}
+
+	hat_palette_ready = 1;
+}
+
+
+/*
+ * Overlay the top HAT_ROWS rows of the sprite with the Rick-specific
+ * tinted palette. Logic mirrors sprites_paint2 (GFXST path) but with full
+ * 8-bit palette index writes and an early row cutoff.
+ */
+#ifdef GFXST
+void
+sprites_paintHat(U8 rickIndex, U8 spriteNumber, U16 x, U16 y, U8 front, U8 hatRows)
+{
+	U32 d = 0;
+	U16 x0, y0;
+	U16 width, height;
+	S16 g;
+	S16 r, c;
+	S16 i;
+	S16 im;
+	U8 flg;
+	U8 *fb;
+	U16 x_fb, y_fb;
+	U8 *remap;
+	U8 idx, outIdx;
+	U8 ci;
+	U8 has_remap = 0;
+	S16 firstRow;
+	S16 lastRow; /* exclusive */
+	S16 scan;
+
+	if (rickIndex >= RICK_MAX) return;
+	if (!hat_palette_ready) return;
+	if (hatRows == 0) return;
+	if (hatRows > 0x15) hatRows = 0x15;
+
+	remap = hat_remap[rickIndex];
+	/* Skip the overdraw entirely if this Rick is using a 0 hue shift. */
+	for (ci = 0; ci < 16; ci++) if (remap[ci]) { has_remap = 1; break; }
+	if (!has_remap) return;
+
+	/*
+	 * Find the first row of the sprite that contains any non-transparent
+	 * pixel. The hat band runs from that row downward, so different poses
+	 * (standing, crouching, climbing, falling) all keep the tint locked
+	 * to the top of the actually-drawn silhouette instead of an absolute
+	 * pixel offset that would slide off in some poses.
+	 *
+	 * sprites_data is U32[0x54] = 0x15 rows * 4 columns; each U32 packs 8
+	 * 4-bit pixels. A row is empty iff all 4 of its U32s are zero.
+	 */
+	firstRow = -1;
+	for (scan = 0; scan < 0x15; scan++)
+	{
+		U32 *row = &sprites_data[spriteNumber][scan * 4];
+		if (row[0] | row[1] | row[2] | row[3]) { firstRow = scan; break; }
+	}
+	if (firstRow < 0) return; /* fully transparent sprite */
+
+	lastRow = firstRow + hatRows;
+	if (lastRow > 0x15) lastRow = 0x15;
+
+	if (!env_depth) front = TRUE;
+
+	x0 = x;
+	y0 = y;
+	width = 0x20;
+	height = 0x15;
+
+	if (maps_clip(&x0, &y0, &width, &height))
+		return;
+
+	g = 0;
+
+	x_fb = x0 - MAPS_FB_X;
+	y_fb = y0 - MAPS_FB_Y + 8;
+
+	fb = fb_at(x_fb, y_fb);
+
+	for (r = 0; r < 0x15; r++)
+	{
+		if (r >= lastRow) break;
+		if (r < firstRow) { g += 4; fb += FB_WIDTH; continue; }
+		if (r >= height || y + r < y0) { g += 4; fb += FB_WIDTH; continue; }
+
+		i = 0x1f;
+		im = x - (x & 0xfff8);
+		flg = map_eflg[map_map[(y + r) >> 3][(x + 0x1f) >> 3]];
+
+#define HAT_LOOP(N, C0, C1) \
+		d = sprites_data[spriteNumber][g + N]; \
+		for (c = C0; c >= C1; c--, i--, d >>= 4, im--) \
+		{ \
+			if (im == 0) \
+			{ \
+				flg = map_eflg[map_map[(y + r) >> 3][(x + c) >> 3]]; \
+				im = 8; \
+			} \
+			if (c >= width || x + c < x0) continue; \
+			if (!front && !env_highlight && (flg & MAP_EFLG_FGND)) continue; \
+			idx = (U8)(d & 0x0f); \
+			if (idx == 0) continue;             /* transparent */ \
+			if (idx == HAT_OUTLINE_INDEX) continue; /* keep outline */ \
+			outIdx = remap[idx]; \
+			if (outIdx == 0) continue; \
+			fb[i] = outIdx; \
+		}
+
+		HAT_LOOP(3, 0x1f, 0x18);
+		HAT_LOOP(2, 0x17, 0x10);
+		HAT_LOOP(1, 0x0f, 0x08);
+		HAT_LOOP(0, 0x07, 0x00);
+
+#undef HAT_LOOP
+
+		fb += FB_WIDTH;
+		g += 4;
+	}
+}
+#endif
+
+#ifdef GFXPC
+void
+sprites_paintHat(U8 rickIndex, U8 spriteNumber, U16 x, U16 y, U8 front, U8 hatRows)
+{
+	/* Hat tinting is only implemented for the GFXST data layout. */
+	(void)rickIndex; (void)spriteNumber; (void)x; (void)y; (void)front; (void)hatRows;
+}
+#endif
+
 
 /* eof */

@@ -35,6 +35,7 @@
 #include "data.h"
 #include "fb.h"
 #include "tiles.h"
+#include "sprites.h"
 #include "draw.h"
 
 #ifdef EMSCRIPTEN
@@ -495,6 +496,7 @@ static void game_cycle(void)
 
 			/* this step is required to force a screen update (clear) before changing the palette */
 			fb_initPalette();
+			sprites_initHatPalette();
 #ifdef ENABLE_DEVTOOLS
 			game_state = DEVTOOLS;
 #else

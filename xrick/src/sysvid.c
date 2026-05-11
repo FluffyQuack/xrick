@@ -125,6 +125,26 @@ void sysvid_setPaletteFromRGB(U8 *r, U8 *g, U8 *b, U16 n)
 
 
 /*
+ * sysvid_setPaletteEntry
+ *
+ * sets a single palette entry. Used to register extra colours past the
+ * game's normal palette range (e.g. per-Rick hat tints in slots 32+).
+ */
+void sysvid_setPaletteEntry(U16 idx, U8 r, U8 g, U8 b)
+{
+	if (idx >= 256) return;
+	pals[idx].r = r;
+	pals[idx].g = g;
+	pals[idx].b = b;
+	if (idx >= paln) paln = idx + 1;
+	pald[idx].r = r * gamma / 255;
+	pald[idx].g = g * gamma / 255;
+	pald[idx].b = b * gamma / 255;
+}
+
+
+
+/*
  * sysvid_setDisplayPalette
  *
  * sets (again) the display palette, useful when visibility has changed.

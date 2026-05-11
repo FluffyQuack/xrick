@@ -25,6 +25,9 @@ int inifile_playerCount = 1;
 int inifile_linearFilter = 1;
 int inifile_scale = 2;
 U8 inifile_volume = SYSSND_MAXVOL;
+int inifile_hueShift[4] = { 0, 120, 240, 60 };
+/* Default hat row count (hat covers the top of Rick's sprite). Crouching
+ * extends it by +5; flying-into-foreground (zombie) trims it by -2. */
 
 static void
 trim(char *s)
@@ -96,6 +99,16 @@ inifile_load(const char *path)
 			if (n > SYSSND_MAXVOL) n = SYSSND_MAXVOL;
 			inifile_volume = (U8)n;
 		}
+		else if (!strcasecmp(key, "HueShift0") ||
+		         !strcasecmp(key, "HueShift1") ||
+		         !strcasecmp(key, "HueShift2") ||
+		         !strcasecmp(key, "HueShift3")) {
+			int idx = key[8] - '0';
+			n = atoi(val);
+			while (n < 0) n += 360;
+			n %= 360;
+			inifile_hueShift[idx] = n;
+		}
 		else {
 			sys_printf("xrick/inifile: unknown key '%s'\n", key);
 		}
@@ -129,6 +142,10 @@ inifile_save(const char *path)
 	fprintf(f, "LinearFilter = %d\n", inifile_linearFilter);
 	fprintf(f, "Scale = %d\n", inifile_scale);
 	fprintf(f, "Volume = %d\n", (int)inifile_volume);
+	fprintf(f, "HueShift0 = %d\n", inifile_hueShift[0]);
+	fprintf(f, "HueShift1 = %d\n", inifile_hueShift[1]);
+	fprintf(f, "HueShift2 = %d\n", inifile_hueShift[2]);
+	fprintf(f, "HueShift3 = %d\n", inifile_hueShift[3]);
 
 	fclose(f);
 	sys_printf("xrick/inifile: saved '%s'\n", path);

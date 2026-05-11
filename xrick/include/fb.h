@@ -62,6 +62,13 @@ void fb_initPalette();
  */
 void fb_setPaletteFromImg(img_t* img);
 
+/*
+ * fetches the original (non-gamma-adjusted) RGB for a palette index used by
+ * the game palette (only valid for idx in [0, FB_PALSZ)).
+ */
+void fb_getPaletteRGB(U8 idx, U8 *r, U8 *g, U8 *b);
+U8 fb_getPaletteSize(void);
+
 #endif
 
 /* eof */

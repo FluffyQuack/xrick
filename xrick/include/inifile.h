@@ -29,6 +29,11 @@ extern int inifile_scale;
  * user-volume type. Default SYSSND_MAXVOL (full volume). */
 extern U8 inifile_volume;
 
+/* Per-Rick hat hue-shift in degrees (-360..360). Each Rick gets a hue shift
+ * applied to their hat colours so the players can be told apart. A value of
+ * 0 leaves the hat untouched (no extra paint pass). */
+extern int inifile_hueShift[4];
+
 /* Load and apply the given ini file. Safe to call when the file does
  * not exist (silently no-op). */
 void inifile_load(const char *path);

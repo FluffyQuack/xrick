@@ -402,6 +402,20 @@ void ents_paintAll()
 			sprites_paint2(ent_ents[i].sprite,
 				ent_ents[i].x, ent_ents[i].y,
 				ent_ents[i].front);
+			/* Co-op: Rick 0 lives in ent_ents[E_RICK_NO]; tint his hat
+			 * if a hue shift was configured. Hat height tracks pose:
+			 * crouching extends the mask downwards (the hat sits lower
+			 * on the body), zombie/flying-into-foreground shrinks it. */
+			if (i == E_RICK_NO && rick_active[0])
+			{
+				/* Hat band: 6 rows from the first opaque row of the sprite,
+				 * trimmed to 5 when the Rick is flying-into-foreground
+				 * (zombie pose), since that sprite shows less of the head. */
+				U8 rows = R_STTST(0, E_RICK_STZOMBIE) ? 5 : 6;
+				sprites_paintHat(0, ent_ents[i].sprite,
+					ent_ents[i].x, ent_ents[i].y,
+					ent_ents[i].front, rows);
+			}
 		}
 	}
 	/* Co-op (Stage 3): foreground draw for the extra Ricks. */
@@ -409,7 +423,12 @@ void ents_paintAll()
 	{
 		ent_t *e = &extra_rick_ents[i];
 		if (rick_active[i + 1] && e->n && (env_highlight || e->sprite))
+		{
+			U8 ri = (U8)(i + 1);
+			U8 rows = R_STTST(ri, E_RICK_STZOMBIE) ? 5 : 6;
 			sprites_paint2(e->sprite, e->x, e->y, e->front);
+			sprites_paintHat(ri, e->sprite, e->x, e->y, e->front, rows);
+		}
 	}
 	/* Co-op: foreground draw for extra bullets. */
 	for (i = 0; i < RICK_MAX - 1; i++)

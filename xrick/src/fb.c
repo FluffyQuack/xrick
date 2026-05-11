@@ -169,4 +169,19 @@ void fb_setPaletteFromImg(img_t* img)
 	sysvid_setPaletteFromImg(img);
 }
 
+
+
+void fb_getPaletteRGB(U8 idx, U8 *r, U8 *g, U8 *b)
+{
+	if (idx >= FB_PALSZ) { *r = *g = *b = 0; return; }
+	*r = RED[idx];
+	*g = GREEN[idx];
+	*b = BLUE[idx];
+}
+
+U8 fb_getPaletteSize(void)
+{
+	return FB_PALSZ;
+}
+
 /* eof */
