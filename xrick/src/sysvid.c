@@ -50,6 +50,15 @@
 
 rect_t SCREENRECT = {0, 0, FB_WIDTH, FB_HEIGHT, NULL}; /* whole fb */
 
+/*
+ * Camera interpolation: vertical pixel offset applied to the framebuffer
+ * texture at present time. Driven by game.c during scrolling. The render
+ * always presents the full texture; this just slides it on the renderer
+ * for the duration of a scroll tick so the view glides instead of snapping
+ * in 8-pixel jumps.
+ */
+S16 sysvid_view_dy = 0;
+
 static U16 paln; /* palette size */
 static SDL_Color pals[256], pald[256]; /* fixme: explain */
 static U32* pixels;
@@ -341,52 +350,77 @@ sysvid_update(rect_t *rects)
 	U16 x, y, xx, yy;
 	U8 *src, *dst, *src0, *dst0;
 	U8 n;
+	static S16 prev_view_dy = 0;
 
-	if (rects == NULL) /* nothing to do? */
+	/*
+	 * Nothing to refresh AND no offset transition pending? Skip. The
+	 * prev_view_dy check forces one present when sysvid_view_dy decays
+	 * back to 0 (end of a scroll) so the camera lands in its rest spot
+	 * even if the scroller already cleared game_rects.
+	 */
+	if (rects == NULL && sysvid_view_dy == 0 && prev_view_dy == 0)
 		return;
 
-	int pitch;
-	U32* pixelx;
-
-	SDL_LockTexture(texture, NULL, &pixelx, &pitch);
-
-	n = 0;
-	rect = rects;
-	while (rect)
+	/*
+	 * If there are dirty regions, copy them into the streaming texture.
+	 * When rects == NULL we skip the texture rebuild entirely and just
+	 * re-present the existing texture (needed for camera-interp frames
+	 * where only the view offset changes).
+	 */
+	if (rects != NULL)
 	{
-		U16 o = rect->x + rect->y * fb_width;
-		U8* src0 = ((U8*)& fb) + o;
-		U8* dst0 = pixelx + o;
-		for (int y = rect->y; y < rect->y + rect->height; y++)
+		int pitch;
+		U32* pixelx = NULL;
+
+		SDL_LockTexture(texture, NULL, (void**)&pixelx, &pitch);
+		if (pixelx != NULL)
 		{
-			U8* srcx = src0;
-			U8* dstx = dst0;
-
-			for (int x = rect->x; x < rect->x + rect->width; x++)
+			n = 0;
+			rect = rects;
+			while (rect)
 			{
-				*dstx = pald[*srcx].b;
-				dstx++;
-				*dstx = pald[*srcx].g;
-				dstx++;
-				*dstx = pald[*srcx].r;
-				dstx++;
-				*dstx = pald[*srcx].a;
-				dstx++;
-				srcx++;
-			}
+				U16 o = rect->x + rect->y * fb_width;
+				U8* src0 = ((U8*)& fb) + o;
+				U8* dst0 = (U8*)(pixelx + o);
+				for (int y = rect->y; y < rect->y + rect->height; y++)
+				{
+					U8* srcx = src0;
+					U8* dstx = dst0;
 
-			src0 += fb_width;
-			dst0 += fb_width * 4;
+					for (int x = rect->x; x < rect->x + rect->width; x++)
+					{
+						*dstx = pald[*srcx].b;
+						dstx++;
+						*dstx = pald[*srcx].g;
+						dstx++;
+						*dstx = pald[*srcx].r;
+						dstx++;
+						*dstx = pald[*srcx].a;
+						dstx++;
+						srcx++;
+					}
+
+					src0 += fb_width;
+					dst0 += fb_width * 4;
+				}
+				rect = rect->next;
+				n++;
+			}
+			SDL_UnlockTexture(texture);
 		}
-		rect = rect->next;
-		n++;
 	}
 
-	SDL_UnlockTexture(texture);
-
-	// rects?
-	SDL_RenderCopy(renderer, texture, NULL, NULL);
+	if (sysvid_view_dy != 0) {
+		SDL_Rect dst = { 0, sysvid_view_dy, fb_width, fb_height };
+		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+		SDL_RenderClear(renderer);
+		SDL_RenderCopy(renderer, texture, NULL, &dst);
+	} else {
+		SDL_RenderCopy(renderer, texture, NULL, NULL);
+	}
 	SDL_RenderPresent(renderer);
+
+	prev_view_dy = sysvid_view_dy;
 }
 
 

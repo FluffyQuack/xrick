@@ -93,6 +93,14 @@ typedef struct {
    * or goes out of sight).
    */
   U8 target_rick;
+  /*
+   * Render interpolation: position the entity had at the start of the
+   * current tick. ents_snapshot_tick() snaps these to (x,y) right before
+   * ent_action() moves things, so renders between ticks can lerp from
+   * tick_prev_* to (x,y) using the alpha set by ents_set_alpha().
+   */
+  U16 tick_prev_x;
+  U16 tick_prev_y;
 } ent_t;
 
 typedef struct {
@@ -118,6 +126,20 @@ extern void ent_actvis(U8, U8);
 extern void ent_draw(void);
 extern void ent_clprev(void);
 extern void ent_action(void);
+
+/*
+ * Render interpolation hooks.
+ *
+ * ents_snapshot_tick() copies (x,y) -> (tick_prev_x,tick_prev_y) for every
+ * tracked entity (ent_ents[], extra_rick_ents, extra_bullet_ents,
+ * extra_bomb_ents). Call right before ent_action() each tick.
+ *
+ * ents_set_alpha(num, den) sets the lerp factor used by ents_paintAll().
+ * num/den == 1/1 (the default) disables interpolation -- the paint uses raw
+ * (x,y), matching legacy behavior.
+ */
+extern void ents_snapshot_tick(void);
+extern void ents_set_alpha(S32 num, S32 den);
 
 #endif
 

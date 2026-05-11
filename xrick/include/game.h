@@ -66,6 +66,8 @@ extern hscore_t game_hscores[8];  /* highest scores (hall of fame) */
 
 extern U8 game_waitevt;    /* wait for events (TRUE, FALSE) */
 extern U8 game_period;     /* time between each frame, in millisecond */
+extern U8 game_interpolate; /* render interpolation toggle (F10) */
+extern S8 game_scroll_step; /* +8/-8 during a scroll tick, 0 otherwise */
 
 extern rect_t *game_rects; /* rectangles to redraw at each frame */
 

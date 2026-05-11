@@ -43,6 +43,7 @@ scroll_up(void)
   if (n == 8) {
     n = 0;
     game_period = period;
+    game_scroll_step = 0;  /* camera back to its rest position */
     return SCROLL_DONE;
   }
 
@@ -51,6 +52,10 @@ scroll_up(void)
     period = game_period;
     game_period = SCROLL_PERIOD;
   }
+
+  /* Camera interp: world is about to shift up by 8. Renders during this
+   * tick will lag the camera by (1 - alpha) * 8 so the view glides up. */
+  game_scroll_step = 8;
 
   /* translate map */
   for (i = MAP_ROW_SCRTOP; i < MAP_ROW_HBBOT; i++)
@@ -117,6 +122,7 @@ scroll_down(void)
   if (n == 8) {
     n = 0;
     game_period = period;
+    game_scroll_step = 0;  /* camera back to its rest position */
     return SCROLL_DONE;
   }
 
@@ -125,6 +131,9 @@ scroll_down(void)
     period = game_period;
     game_period = SCROLL_PERIOD;
   }
+
+  /* Camera interp: world is about to shift down by 8. */
+  game_scroll_step = -8;
 
   /* translate map */
   for (i = MAP_ROW_SCRBOT; i > MAP_ROW_HTTOP; i--)

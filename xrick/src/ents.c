@@ -41,6 +41,67 @@
 ent_t ent_ents[ENT_ENTSNUM + 1];
 rect_t *ent_rects = NULL;
 
+/*
+ * Interpolation alpha. (num,den)==(1,1) disables interpolation: the lerp
+ * collapses to "use current x,y", which matches legacy behavior exactly.
+ */
+static S32 ents_alpha_num = 1;
+static S32 ents_alpha_den = 1;
+
+void ents_set_alpha(S32 num, S32 den)
+{
+	if (den <= 0) { num = 1; den = 1; }
+	if (num < 0) num = 0;
+	if (num > den) num = den;
+	ents_alpha_num = num;
+	ents_alpha_den = den;
+}
+
+/*
+ * Lerp helpers. Interpolation is skipped when the entity wasn't drawn last
+ * frame (prev_n == 0): there's no meaningful "previous render position" to
+ * smooth from, and tick_prev_* may be stale from a previous incarnation.
+ */
+static U16 ents_interp_x(const ent_t *e)
+{
+	S32 dx;
+	if (!e->prev_n) return e->x;
+	if (ents_alpha_num == ents_alpha_den) return e->x;
+	dx = (S32)e->x - (S32)e->tick_prev_x;
+	return (U16)((S32)e->tick_prev_x + (dx * ents_alpha_num) / ents_alpha_den);
+}
+
+static U16 ents_interp_y(const ent_t *e)
+{
+	S32 dy;
+	if (!e->prev_n) return e->y;
+	if (ents_alpha_num == ents_alpha_den) return e->y;
+	dy = (S32)e->y - (S32)e->tick_prev_y;
+	return (U16)((S32)e->tick_prev_y + (dy * ents_alpha_num) / ents_alpha_den);
+}
+
+/*
+ * Snapshot every tracked entity's (x,y) into tick_prev_{x,y}. Run once per
+ * game tick, right before ent_action() moves things. After ent_action the
+ * delta (tick_prev -> x) is what renders lerp across.
+ */
+void ents_snapshot_tick(void)
+{
+	U8 i;
+	for (i = 0; ent_ents[i].n != 0xff; i++) {
+		ent_ents[i].tick_prev_x = ent_ents[i].x;
+		ent_ents[i].tick_prev_y = ent_ents[i].y;
+	}
+	for (i = 0; i < RICK_MAX - 1; i++) {
+		extra_rick_ents[i].tick_prev_x = extra_rick_ents[i].x;
+		extra_rick_ents[i].tick_prev_y = extra_rick_ents[i].y;
+		extra_bullet_ents[i].tick_prev_x = extra_bullet_ents[i].x;
+		extra_bullet_ents[i].tick_prev_y = extra_bullet_ents[i].y;
+		extra_bomb_ents[i].tick_prev_x = extra_bomb_ents[i].x;
+		extra_bomb_ents[i].tick_prev_y = extra_bomb_ents[i].y;
+	}
+}
+
 
 /*
  * prototypes
@@ -355,6 +416,48 @@ void ents_paintAll()
 	U16 dx, dy;
 	static U8 prev_h = FALSE;
 
+	/*
+	 * Render interpolation: temporarily replace each entity's (x,y) with
+	 * its interpolated render position for the duration of this paint.
+	 * The existing erase/draw/dirty-rect/prev-tracking code then runs
+	 * unchanged, and prev_x/y get stored as the position actually drawn
+	 * (so the next render erases the right rectangle).
+	 *
+	 * Originals are saved up-front and restored at the end so subsequent
+	 * ticks see the true simulation positions.
+	 */
+	U16 saved_ent_x[ENT_ENTSNUM + 1];
+	U16 saved_ent_y[ENT_ENTSNUM + 1];
+	U16 saved_xrx[RICK_MAX - 1], saved_xry[RICK_MAX - 1];
+	U16 saved_xbx[RICK_MAX - 1], saved_xby[RICK_MAX - 1];
+	U16 saved_xmx[RICK_MAX - 1], saved_xmy[RICK_MAX - 1];
+	U8 interp_on = (ents_alpha_num != ents_alpha_den);
+
+	if (interp_on) {
+		for (i = 0; ent_ents[i].n != 0xff; i++) {
+			saved_ent_x[i] = ent_ents[i].x;
+			saved_ent_y[i] = ent_ents[i].y;
+			ent_ents[i].x = ents_interp_x(&ent_ents[i]);
+			ent_ents[i].y = ents_interp_y(&ent_ents[i]);
+		}
+		for (i = 0; i < RICK_MAX - 1; i++) {
+			saved_xrx[i] = extra_rick_ents[i].x;
+			saved_xry[i] = extra_rick_ents[i].y;
+			extra_rick_ents[i].x = ents_interp_x(&extra_rick_ents[i]);
+			extra_rick_ents[i].y = ents_interp_y(&extra_rick_ents[i]);
+
+			saved_xbx[i] = extra_bullet_ents[i].x;
+			saved_xby[i] = extra_bullet_ents[i].y;
+			extra_bullet_ents[i].x = ents_interp_x(&extra_bullet_ents[i]);
+			extra_bullet_ents[i].y = ents_interp_y(&extra_bullet_ents[i]);
+
+			saved_xmx[i] = extra_bomb_ents[i].x;
+			saved_xmy[i] = extra_bomb_ents[i].y;
+			extra_bomb_ents[i].x = ents_interp_x(&extra_bomb_ents[i]);
+			extra_bomb_ents[i].y = ents_interp_y(&extra_bomb_ents[i]);
+		}
+	}
+
 	tiles_setBank(map_tilesBank);
 
 	/* reset rectangles list */
@@ -639,6 +742,22 @@ void ents_paintAll()
 	}
 
 	prev_h = env_highlight;
+
+	/* Restore the true simulation positions (see top of function). */
+	if (interp_on) {
+		for (i = 0; ent_ents[i].n != 0xff; i++) {
+			ent_ents[i].x = saved_ent_x[i];
+			ent_ents[i].y = saved_ent_y[i];
+		}
+		for (i = 0; i < RICK_MAX - 1; i++) {
+			extra_rick_ents[i].x   = saved_xrx[i];
+			extra_rick_ents[i].y   = saved_xry[i];
+			extra_bullet_ents[i].x = saved_xbx[i];
+			extra_bullet_ents[i].y = saved_xby[i];
+			extra_bomb_ents[i].x   = saved_xmx[i];
+			extra_bomb_ents[i].y   = saved_xmy[i];
+		}
+	}
 }
 
 

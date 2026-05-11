@@ -74,6 +74,32 @@ U8 game_period = 0;
 U8 game_waitevt = FALSE;
 rect_t *game_rects = NULL;
 
+/*
+ * Render interpolation toggle. When TRUE, entities are painted at a
+ * position lerped between (tick_prev_x,y) and (x,y) using the fraction of
+ * the current tick that has elapsed -- the simulation still ticks at 25 fps
+ * but the screen updates smoothly at the present rate. When FALSE the
+ * legacy behavior (paint at the current tick position) is restored. Toggled
+ * by F10.
+ */
+U8 game_interpolate = TRUE;
+
+/*
+* Bugs to fix regarding interpolation:
+* - HUD is updated at a choppy rate when camera is panning
+* - Bullets sometimes looks off for one tick. Maybe lacking correct "prev" coordinate
+* - When moving between screens, sprites are in a wonky location for one frame (maybe not related to interpolation)
+*/
+
+/*
+ * Camera interpolation: the scroller shifts the world by 8 px per tick. We
+ * keep the per-tick step here (+8 = scrolling up, -8 = scrolling down,
+ * 0 = no scroll). The render path uses this to compute a visual offset
+ * (1 - alpha) * step, applied by sysvid_update so the camera glides to
+ * the post-shift position over the tick window instead of snapping.
+ */
+S8 game_scroll_step = 0;
+
 #ifdef GFXST
 hscore_t game_hscores[8] = {
   { 8000, "SIMES@@@@@" },
@@ -144,11 +170,20 @@ static U32 next_tick_us;    /* absolute deadline for next game tick, us */
 static U32 next_render_us;  /* absolute deadline for next present, us */
 static int pace_idx;        /* index into the active pace pattern */
 
+/*
+ * Interpolation: time of the most recent tick boundary (when tick_prev_*
+ * was snapshotted) and the duration of that tick in microseconds. Renders
+ * between ticks compute alpha = (now - last_tick_us) / last_tick_period_us.
+ */
+static U32 last_tick_us = 0;
+static U32 last_tick_period_us = 40000;
+
 
 /*
  * prototypes
  */
 static void game_cycle(void);
+static U8   game_state_is_play(void);
 static void init(void);
 static void restart(void);
 static void loadData(void);
@@ -296,6 +331,15 @@ game_run(char *path)
 	data_setpath(path);
 	loadData(); /* load cached data */
 
+	/*
+	 * Plant the ent_ents end-sentinel early. ents_snapshot_tick() runs
+	 * every tick (including during the splash/intro screens) and walks
+	 * the array until it hits n == 0xff. init() normally plants it, but
+	 * init() only runs after the user starts a game -- without this the
+	 * pre-game snapshots run off the end of the array and trash memory.
+	 */
+	ent_ents[ENT_ENTSNUM].n = 0xFF;
+
 	game_period = sysarg_args_period ? sysarg_args_period : GAME_PERIOD;
 	tm = sys_gettime();
 	{
@@ -354,9 +398,57 @@ game_run(char *path)
 			 * (no dirty regions), so this naturally throttles itself to
 			 * "present once per game tick" -- the render-fps cap below
 			 * just bounds the worst case.
+			 *
+			 * Interpolation: before presenting, compute the current alpha
+			 * within the tick (0 at tick start, 1 at next tick) and let
+			 * game_paintEntities() lerp entities to that fraction. The
+			 * status bar is repainted as part of that call, which also
+			 * re-establishes game_rects for sysvid_update.
 			 */
 			if ((S32)(now - next_render_us) >= 0)
 			{
+				/*
+				 * Camera interpolation: during a scroll the world data
+				 * has already been shifted by the current tick; visually
+				 * lag the present by (1 - alpha) * step so the view glides
+				 * to the post-shift position over the tick window.
+				 */
+				if (game_interpolate &&
+				    (game_state == SCROLL_UP || game_state == SCROLL_DOWN))
+				{
+					S32 elapsed = (S32)(now - last_tick_us);
+					S32 period  = (S32)last_tick_period_us;
+					if (period <= 0) period = 1;
+					if (elapsed < 0) elapsed = 0;
+					if (elapsed > period) elapsed = period;
+					sysvid_view_dy = (S16)
+						((S32)game_scroll_step * (period - elapsed) / period);
+				}
+				else
+				{
+					sysvid_view_dy = 0;
+				}
+
+				/*
+				 * Entity interpolation. Only run when game_rects is NULL:
+				 * if a full-screen refresh (SCREENRECT) or other rects are
+				 * already pending (e.g. just entered a new submap, or the
+				 * scroller painted), present those first -- our paint
+				 * would otherwise clobber game_rects with a smaller
+				 * STATUSRECT+ent_rects list and lose the full redraw.
+				 */
+				if (game_interpolate && game_state_is_play() &&
+				    game_rects == NULL)
+				{
+					S32 elapsed = (S32)(now - last_tick_us);
+					S32 period  = (S32)last_tick_period_us;
+					if (period <= 0) period = 1;
+					if (elapsed < 0) elapsed = 0;
+					if (elapsed > period) elapsed = period;
+					ents_set_alpha(elapsed, period);
+					game_paintEntities();
+					ents_set_alpha(1, 1);
+				}
 				sysvid_update(game_rects);
 				draw_STATUSRECT.next = NULL;
 				game_rects = NULL;
@@ -377,6 +469,29 @@ game_run(char *path)
 	game_exit();
 }
 
+/*
+ * Predicate: are we in a state where entity painting / interpolation makes
+ * sense? Used by the render path to gate the extra game_paintEntities()
+ * call so it doesn't smear stale entities over intros, fades, menus, etc.
+ */
+static U8 game_state_is_play(void)
+{
+	switch (game_state) {
+		case CTRL_ACTION:
+		case CTRL_PAUSE:
+		case CTRL_RICK:
+		case PAINT:
+		case CTRL_SCROLL:
+		case PAUSED:
+		case PAUSE_PRESSED1:
+		case PAUSE_PRESSED1B:
+		case PAUSE_PRESSED2:
+			return TRUE;
+		default:
+			return FALSE;
+	}
+}
+
 static void game_exit(void)
 {
 	freeData(); /* free cached data */
@@ -391,6 +506,19 @@ static void game_exit(void)
  */
 static void game_tick(void)
 {
+	/*
+	 * Interpolation: snapshot positions and timing at the start of every
+	 * tick. Captures (x,y) -> (tick_prev_x,y) for entities before anything
+	 * in game_cycle moves them (ent_action, scroll, etc.) and records the
+	 * tick start time + duration so the render path can compute alpha.
+	 * Doing this unconditionally keeps tick_prev_* consistent even when
+	 * game_interpolate is toggled mid-frame.
+	 */
+	ents_snapshot_tick();
+	last_tick_us = sys_gettime_us();
+	last_tick_period_us = pace_patterns[GAME_PACE_MODE].tick_us[
+		pace_idx % pace_patterns[GAME_PACE_MODE].count];
+
 	/* events */
 	if (game_waitevt)
 		sysevt_wait();  /* wait for an event, stop doing anything */
@@ -747,7 +875,15 @@ static void game_cycle(void)
 
 		case PAINT:
 
-			game_paintEntities();
+			/*
+			 * With interpolation on, defer entity painting to render time
+			 * so each presented frame can lerp between tick_prev_* and the
+			 * post-action (x,y). The render path in game_run() calls
+			 * game_paintEntities() itself; doing it here too would just
+			 * waste work (the render would immediately erase + redraw).
+			 */
+			if (!game_interpolate)
+				game_paintEntities();
 			game_state = CTRL_SCROLL;
 			return;
 

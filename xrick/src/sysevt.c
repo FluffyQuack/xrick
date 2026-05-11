@@ -227,6 +227,13 @@ processEvent()
 		else if (key == SDL_SCANCODE_F9) {
 			game_toggleCheat(3);
 		}
+		else if (key == SDL_SCANCODE_F10) {
+			/* Toggle render interpolation. With it off the game looks like
+			 * the original 25 fps; with it on the simulation still ticks
+			 * at 25 fps but entities are drawn at an interpolated position
+			 * each rendered frame. */
+			game_interpolate = !game_interpolate;
+		}
 		break;
 
 	case SDL_KEYUP:
