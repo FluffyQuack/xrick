@@ -34,6 +34,12 @@ extern U8 inifile_volume;
  * 0 leaves the hat untouched (no extra paint pass). */
 extern int inifile_hueShift[4];
 
+/* Mapping of player slot -> xinput controller index (0..3), or -1 to
+ * disable controller input for that player. Defaults to identity, so a
+ * single pad plugged into port 0 drives P1. Stored here (vs. sysxinput.h)
+ * so the ini loader doesn't need to depend on the xinput module. */
+extern int inifile_xinputPlayer[4];
+
 /* Load and apply the given ini file. Safe to call when the file does
  * not exist (silently no-op). */
 void inifile_load(const char *path);

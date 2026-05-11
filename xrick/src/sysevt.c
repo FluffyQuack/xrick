@@ -32,6 +32,7 @@
 #include "draw.h"
 #include "e_rick.h"
 #include "ents.h"
+#include "sysxinput.h"
 
 #define SYSJOY_RANGE 3280
 
@@ -322,6 +323,7 @@ sysevt_poll(void)
 {
 	while (SDL_PollEvent(&event))
 		processEvent();
+	sysxinput_apply();
 }
 
 /*
