@@ -132,10 +132,13 @@ data_file_open(char *name)
 int
 data_file_size(data_file_t *file)
 {
-	int s;
+	int s = 0;
 #ifdef WITH_ZLIB
 	if (path.zip) {
-		/* not implemented */
+		unz_file_info info;
+		if (unzGetCurrentFileInfo(((zipped_t *)file)->zip, &info,
+			NULL, 0, NULL, 0, NULL, 0) == UNZ_OK)
+			s = (int)info.uncompressed_size;
 	} else {
 #endif
 		fseek((FILE *)file, 0, SEEK_END);

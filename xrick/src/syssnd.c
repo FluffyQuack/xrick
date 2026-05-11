@@ -45,11 +45,6 @@ static SDL_mutex *sndlock;
 /*
  * prototypes
  */
-static int sdlRWops_open(SDL_RWops *context, char *name);
-static int sdlRWops_seek(SDL_RWops *context, int offset, int whence);
-static int sdlRWops_read(SDL_RWops *context, void *ptr, int size, int maxnum);
-static int sdlRWops_write(SDL_RWops *context, const void *ptr, int size, int num);
-static int sdlRWops_close(SDL_RWops *context);
 static void end_channel(U8);
 
 /*
@@ -359,35 +354,61 @@ sound_t *
 syssnd_load(char *name)
 {
 	sound_t *s;
-	SDL_RWops *context;
+	data_file_t *f;
+	SDL_RWops *rw;
 	SDL_AudioSpec audiospec;
+	U8 *raw;
+	int size;
 
-	/* alloc context */
-	context = malloc(sizeof(SDL_RWops));
-	context->seek = sdlRWops_seek;
-	context->read = sdlRWops_read;
-	context->write = sdlRWops_write;
-	context->close = sdlRWops_close;
+	/*
+	 * Slurp the whole file into memory and hand SDL a seekable mem RWops.
+	 * Wrapping data_file_* directly won't work for the zip path: the
+	 * underlying zip reader can't seek backwards, and SDL_LoadWAV_RW needs
+	 * to seek through the RIFF chunks to find 'fmt ' and 'data'.
+	 */
+	f = data_file_open(name);
+	if (!f) return NULL;
 
-	/* open */
-	if (sdlRWops_open(context, name) == -1)
+	size = data_file_size(f);
+	if (size <= 0) {
+		data_file_close(f);
 		return NULL;
+	}
 
-	/* alloc sound */
+	raw = malloc(size);
+	if (!raw) {
+		data_file_close(f);
+		return NULL;
+	}
+
+	if (data_file_read(f, raw, 1, size) != size) {
+		free(raw);
+		data_file_close(f);
+		return NULL;
+	}
+	data_file_close(f);
+
+	rw = SDL_RWFromMem(raw, size);
+	if (!rw) {
+		free(raw);
+		return NULL;
+	}
+
 	s = malloc(sizeof(sound_t));
 #ifdef DEBUG
 	s->name = malloc(strlen(name) + 1);
 	strncpy(s->name, name, strlen(name) + 1);
 #endif
 
-	/* read */
-	/* second param == 1 -> close source once read */
-	if (!SDL_LoadWAV_RW(context, 1, &audiospec, &(s->buf), &(s->len)))
+	/* freesrc=1 -> SDL closes the RWops; we still own `raw` */
+	if (!SDL_LoadWAV_RW(rw, 1, &audiospec, &(s->buf), &(s->len)))
 	{
+		free(raw);
 		free(s);
 		return NULL;
 	}
 
+	free(raw);
 	s->dispose = FALSE;
 
 	return s;
@@ -403,51 +424,6 @@ syssnd_free(sound_t *s)
 	if (s->buf) SDL_FreeWAV(s->buf);
 	s->buf = NULL;
 	s->len = 0;
-}
-
-/*
- *
- */
-static int
-sdlRWops_open(SDL_RWops *context, char *name)
-{
-	data_file_t *f;
-
-	f = data_file_open(name);
-	if (!f) return -1;
-	context->hidden.unknown.data1 = (void *)f;
-
-	return 0;
-}
-
-static int
-sdlRWops_seek(SDL_RWops *context, int offset, int whence)
-{
-	return data_file_seek((data_file_t *)(context->hidden.unknown.data1), offset, whence);
-}
-
-static int
-sdlRWops_read(SDL_RWops *context, void *ptr, int size, int maxnum)
-{
-	return data_file_read((data_file_t *)(context->hidden.unknown.data1), ptr, size, maxnum);
-}
-
-static int
-sdlRWops_write(SDL_RWops *context, const void *ptr, int size, int num)
-{
-	/* not implemented */
-	return -1;
-}
-
-static int
-sdlRWops_close(SDL_RWops *context)
-{
-	if (context)
-	{
-		data_file_close((data_file_t *)(context->hidden.unknown.data1));
-		free(context);
-	}
-	return 0;
 }
 
 #endif /* ENABLE_SOUND */
