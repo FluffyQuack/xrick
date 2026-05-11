@@ -770,8 +770,14 @@ ent_clprev(void)
 {
   U8 i;
 
-  for (i = 0; ent_ents[i].n != 0xff; i++)
+  for (i = 0; ent_ents[i].n != 0xff; i++) {
     ent_ents[i].prev_n = 0;
+    /* Room switch / fresh-start: the tick snapshot captured pre-teleport
+     * coords. Anchor tick_prev_* to the new position so sub-tick renders
+     * (alpha < 1) don't lerp from the old room to the new one. */
+    ent_ents[i].tick_prev_x = ent_ents[i].x;
+    ent_ents[i].tick_prev_y = ent_ents[i].y;
+  }
 
   /* Co-op (Stage 3): also reset the extra Ricks' dirty-rect state. */
   ricks_extra_clprev();

@@ -230,8 +230,12 @@ void
 ricks_extra_clprev(void)
 {
 	U8 i;
-	for (i = 0; i < RICK_MAX - 1; i++)
+	for (i = 0; i < RICK_MAX - 1; i++) {
 		extra_rick_ents[i].prev_n = 0;
+		/* See ent_clprev: anchor tick_prev_* to the post-teleport position. */
+		extra_rick_ents[i].tick_prev_x = extra_rick_ents[i].x;
+		extra_rick_ents[i].tick_prev_y = extra_rick_ents[i].y;
+	}
 }
 
 

@@ -58,6 +58,30 @@ rect_t SCREENRECT = {0, 0, FB_WIDTH, FB_HEIGHT, NULL}; /* whole fb */
  * in 8-pixel jumps.
  */
 S16 sysvid_view_dy = 0;
+S16 sysvid_view_dy_old = 0;
+
+/*
+ * Playfield rect inside the 320x200 fb. The HUD strip (y < 8) and the
+ * left/right side strips (x outside [PLAYFIELD_X, PLAYFIELD_X+PLAYFIELD_W])
+ * are static; only this rect gets shifted during a smooth-scroll tick.
+ * GFXST layout; GFXPC paints the map to a slightly different y range but
+ * the same horizontal range, so the rect works for both -- the worst case
+ * is the GFXPC HUD strip stays static, which is what we want.
+ */
+#define PLAYFIELD_X 32
+#define PLAYFIELD_Y 8
+#define PLAYFIELD_W 256
+#define PLAYFIELD_H 192
+
+/*
+ * Pre-scroll framebuffer snapshot. Captured at the start of each scroll
+ * tick before scroll_up/scroll_down repaints fb with post-shift content,
+ * so the render path can lerp visually between OLD and NEW playfield
+ * states instead of exposing HUD/black pixels in the 8 px the camera
+ * uncovers each tick.
+ */
+static U8 fb_prev[FB_HEIGHT][FB_WIDTH];
+static U8 fb_prev_valid = 0;
 
 static U16 paln; /* palette size */
 static SDL_Color pals[256], pald[256]; /* fixme: explain */
@@ -65,6 +89,7 @@ static U32* pixels;
 static SDL_Window *screen;
 static SDL_Renderer *renderer;
 static SDL_Texture* texture;
+static SDL_Texture* prev_texture; /* OLD playfield, built from fb_prev */
 static U32 videoFlags;
 static U8 gamma;
 static U16 fb_width, fb_height;
@@ -295,6 +320,13 @@ IFDEBUG_VIDEO(
 		SDL_PIXELFORMAT_ARGB8888,
 		SDL_TEXTUREACCESS_STREAMING,
 		fb_width, fb_height);
+	/* Pre-scroll snapshot target. Built only when a scroll tick starts
+	 * (sysvid_snapshot_playfield), so the streaming-access cost is paid
+	 * a handful of times per scroll, not per frame. */
+	prev_texture = SDL_CreateTexture(renderer,
+		SDL_PIXELFORMAT_ARGB8888,
+		SDL_TEXTUREACCESS_STREAMING,
+		fb_width, fb_height);
 
 	SDL_UpdateTexture(texture, NULL, pixels, fb_width * sizeof(U32));
 	SDL_RenderClear(renderer);
@@ -335,6 +367,42 @@ sysvid_shutdown(void)
 }
 
 
+
+
+/*
+ * Capture the current fb so the smooth-scroll lerp has the pre-shift
+ * playfield to draw from. Called by the scroller right before maps_paint
+ * overwrites fb with the post-shift world. Builds prev_texture from
+ * fb (palette-converted) once -- subsequent scroll-tick renders just
+ * sample it. Only the playfield rect is converted; the rest of the
+ * texture stays whatever was there last time, which is fine because
+ * the renderer only samples the playfield rect from prev_texture.
+ */
+void
+sysvid_snapshot_playfield(void)
+{
+	int pitch;
+	U32 *pix = NULL;
+	int row, col;
+
+	memcpy(fb_prev, fb, sizeof(fb_prev));
+	fb_prev_valid = 1;
+
+	if (SDL_LockTexture(prev_texture, NULL, (void **)&pix, &pitch) != 0 || !pix)
+		return;
+	for (row = PLAYFIELD_Y; row < PLAYFIELD_Y + PLAYFIELD_H; row++) {
+		U8 *src = &fb_prev[row][PLAYFIELD_X];
+		U8 *dst = ((U8 *)pix) + row * pitch + PLAYFIELD_X * 4;
+		for (col = 0; col < PLAYFIELD_W; col++) {
+			*dst++ = pald[*src].b;
+			*dst++ = pald[*src].g;
+			*dst++ = pald[*src].r;
+			*dst++ = pald[*src].a;
+			src++;
+		}
+	}
+	SDL_UnlockTexture(prev_texture);
+}
 
 
 /*
@@ -410,11 +478,36 @@ sysvid_update(rect_t *rects)
 		}
 	}
 
-	if (sysvid_view_dy != 0) {
-		SDL_Rect dst = { 0, sysvid_view_dy, fb_width, fb_height };
+	if (sysvid_view_dy != 0 && fb_prev_valid) {
+		/*
+		 * Smooth-scroll composition. The scroller has already painted fb
+		 * with the post-shift world; fb_prev / prev_texture holds the
+		 * pre-shift world. We want only the playfield rect to glide; HUD
+		 * and the left/right side strips must stay static.
+		 *
+		 * Order:
+		 *   1. Draw the full new fb un-shifted. Paints HUD + side strips
+		 *      at their correct static positions. The playfield region
+		 *      gets overwritten in step 2-3 so its content here is moot.
+		 *   2. Clip to the playfield rect.
+		 *   3. Draw prev_texture's playfield at dy = view_dy_old, then
+		 *      new texture's playfield at dy = view_dy. As view_dy decays
+		 *      across the tick, OLD slides out and NEW slides in at the
+		 *      same rate, so the 8 px the camera uncovers is filled by
+		 *      OLD pixels instead of black or HUD bleed.
+		 *   4. Unclip.
+		 */
+		SDL_Rect play = { PLAYFIELD_X, PLAYFIELD_Y, PLAYFIELD_W, PLAYFIELD_H };
+		SDL_Rect play_new = play; play_new.y += sysvid_view_dy;
+		SDL_Rect play_old = play; play_old.y += sysvid_view_dy_old;
+
 		SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
 		SDL_RenderClear(renderer);
-		SDL_RenderCopy(renderer, texture, NULL, &dst);
+		SDL_RenderCopy(renderer, texture, NULL, NULL);
+		SDL_RenderSetClipRect(renderer, &play);
+		SDL_RenderCopy(renderer, prev_texture, &play, &play_old);
+		SDL_RenderCopy(renderer, texture, &play, &play_new);
+		SDL_RenderSetClipRect(renderer, NULL);
 	} else {
 		SDL_RenderCopy(renderer, texture, NULL, NULL);
 	}

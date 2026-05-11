@@ -136,6 +136,10 @@ e_bomb_init(U16 x, U16 y, U8 owner)
 	b->x += 4;
 	b->y += 5;
 #endif
+	/* Spawn mid-tick: anchor tick_prev_* to the (post-ST adjustment) spawn
+	 * position so sub-tick renders don't lerp from the stale snapshot. */
+	b->tick_prev_x = b->x;
+	b->tick_prev_y = b->y;
 }
 
 
@@ -243,8 +247,12 @@ void
 bombs_extra_clprev(void)
 {
 	U8 i;
-	for (i = 0; i < RICK_MAX - 1; i++)
+	for (i = 0; i < RICK_MAX - 1; i++) {
 		extra_bomb_ents[i].prev_n = 0;
+		/* See ent_clprev: anchor tick_prev_* to current pos. */
+		extra_bomb_ents[i].tick_prev_x = extra_bomb_ents[i].x;
+		extra_bomb_ents[i].tick_prev_y = extra_bomb_ents[i].y;
+	}
 }
 
 /*

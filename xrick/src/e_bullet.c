@@ -103,6 +103,11 @@ e_bullet_init(U16 x, U16 y, U8 dir, U8 owner)
     b->c1 = 0x08;
     b->sprite = 0x20;
   }
+  /* Spawn mid-tick: the start-of-tick snapshot captured stale (or zero)
+   * tick_prev_* for this slot. Anchor it to the spawn position so later
+   * sub-tick renders interpolate from the spawn point, not from garbage. */
+  b->tick_prev_x = b->x;
+  b->tick_prev_y = b->y;
 #ifdef ENABLE_SOUND
   syssnd_play(WAV_BULLET, 1);
 #endif
@@ -143,8 +148,12 @@ void
 bullets_extra_clprev(void)
 {
   U8 i;
-  for (i = 0; i < RICK_MAX - 1; i++)
+  for (i = 0; i < RICK_MAX - 1; i++) {
     extra_bullet_ents[i].prev_n = 0;
+    /* See ent_clprev: anchor tick_prev_* to current pos. */
+    extra_bullet_ents[i].tick_prev_x = extra_bullet_ents[i].x;
+    extra_bullet_ents[i].tick_prev_y = extra_bullet_ents[i].y;
+  }
 }
 
 

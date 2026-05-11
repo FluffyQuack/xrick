@@ -85,13 +85,6 @@ rect_t *game_rects = NULL;
 U8 game_interpolate = TRUE;
 
 /*
-* Bugs to fix regarding interpolation:
-* - HUD is updated at a choppy rate when camera is panning
-* - Bullets sometimes looks off for one tick. Maybe lacking correct "prev" coordinate
-* - When moving between screens, sprites are in a wonky location for one frame (maybe not related to interpolation)
-*/
-
-/*
  * Camera interpolation: the scroller shifts the world by 8 px per tick. We
  * keep the per-tick step here (+8 = scrolling up, -8 = scrolling down,
  * 0 = no scroll). The render path uses this to compute a visual offset
@@ -423,10 +416,19 @@ game_run(char *path)
 					if (elapsed > period) elapsed = period;
 					sysvid_view_dy = (S16)
 						((S32)game_scroll_step * (period - elapsed) / period);
+					/* OLD playfield (pre-scroll snapshot) lerps in the
+					 * opposite phase: same direction, offset by step. At
+					 * tick start the OLD frame is at its rest position
+					 * (dy_old = 0) and the NEW frame is shifted by step;
+					 * at tick end OLD is shifted by -step (off the
+					 * uncovered edge) and NEW is at rest. */
+					sysvid_view_dy_old =
+						(S16)(sysvid_view_dy - (S16)game_scroll_step);
 				}
 				else
 				{
 					sysvid_view_dy = 0;
+					sysvid_view_dy_old = 0;
 				}
 
 				/*

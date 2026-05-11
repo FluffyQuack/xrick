@@ -33,7 +33,9 @@ extern void sysvid_setPaletteFromRGB(U8* r, U8* g, U8* b, U16 n);
 extern void sysvid_setPaletteEntry(U16 idx, U8 r, U8 g, U8 b);
 
 extern U8 *sysvid_fb;  /* frame buffer */
-extern S16 sysvid_view_dy; /* camera-interp vertical pixel offset */
+extern S16 sysvid_view_dy; /* camera-interp vertical pixel offset (new fb) */
+extern S16 sysvid_view_dy_old; /* same, applied to the pre-scroll snapshot */
+extern void sysvid_snapshot_playfield(void); /* capture fb before scroller repaints it */
 extern void sysvid_setGamma(U8 g);
 //extern U8 sysvid_fadeIn(void);
 //extern U8 sysvid_fadeOut(void);

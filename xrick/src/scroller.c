@@ -26,6 +26,7 @@
 #include "e_rick.h"
 #include "e_bullet.h"
 #include "e_bomb.h"
+#include "sysvid.h"
 
 static U8 period;
 
@@ -56,6 +57,11 @@ scroll_up(void)
   /* Camera interp: world is about to shift up by 8. Renders during this
    * tick will lag the camera by (1 - alpha) * 8 so the view glides up. */
   game_scroll_step = 8;
+
+  /* Snapshot fb pre-shift so the render path can lerp the playfield
+   * between OLD and NEW pixels (and not bleed HUD/black into the 8 px
+   * uncovered by the camera each tick). Must run before maps_paint. */
+  sysvid_snapshot_playfield();
 
   /* translate map */
   for (i = MAP_ROW_SCRTOP; i < MAP_ROW_HBBOT; i++)
@@ -134,6 +140,9 @@ scroll_down(void)
 
   /* Camera interp: world is about to shift down by 8. */
   game_scroll_step = -8;
+
+  /* See scroll_up: capture pre-shift fb for the smooth-scroll lerp. */
+  sysvid_snapshot_playfield();
 
   /* translate map */
   for (i = MAP_ROW_SCRBOT; i > MAP_ROW_HTTOP; i--)
