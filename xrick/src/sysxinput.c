@@ -18,6 +18,8 @@
 #include "sysxinput.h"
 #include "control.h"
 #include "system.h"
+#include "e_rick.h"  /* ricks[i].dir for B-button stick direction fallback */
+#include "game.h"    /* LEFT / RIGHT */
 
 #include <string.h>
 
@@ -39,6 +41,20 @@ static XINPUT_STATE xStates[XPAD_COUNT];
  * to clear our own contribution before computing the new one. */
 static U8 pad_owned[4];
 
+/* Previous-frame X/Y state.
+ *
+ * X (bullet): we want the gun pose visible the whole time X is held, so
+ * we emit FIRE|UP every frame. The bullet path latches
+ * ricks[i].trigger=TRUE on first fire and only releases it on a frame
+ * where FIRE is held but cs != FIRE|UP -- so on X release we emit FIRE
+ * alone for one frame to clear the trigger, otherwise the second shot
+ * would never fire.
+ *
+ * Y (bomb): edge-only. Otherwise holding Y would drop a new bomb every
+ * time the previous one exploded. */
+static U8 prev_X[4];
+static U8 prev_Y[4];
+
 static void
 xinput_update(void)
 {
@@ -51,26 +67,87 @@ xinput_update(void)
 	}
 }
 
+/*
+ * The keyboard scheme overloads CONTROL_FIRE with a direction to pick an
+ * action (FIRE+UP = bullet, FIRE+DOWN = bomb, FIRE+LEFT/RIGHT = stop with
+ * stick out). The gamepad gives each action its own face button:
+ *   A = jump           -> CONTROL_UP
+ *   B = use stick      -> CONTROL_FIRE + direction (stick if any, else facing)
+ *   X = shoot bullet   -> CONTROL_FIRE | CONTROL_UP while held (gun visible),
+ *                         FIRE for one frame on release to clear trigger latch
+ *   Y = place dynamite -> CONTROL_FIRE | CONTROL_DOWN on press edge, then FIRE
+ * X/Y priority over B so pushing the stick off-axis can't break the
+ * bullet/bomb exact-equality check in e_rick.c.
+ */
 static U8
-read_pad_bits(int c, U8 include_global)
+read_pad_bits(int i, int c, U8 include_global)
 {
 	U8 bits = 0;
 	WORD wb;
 	SHORT lx, ly;
+	int dpad_left, dpad_right, dpad_up, dpad_down;
+	int press_X, press_Y, press_B;
+	int edge_Y, release_X;
 
-	if (c < 0 || c >= XPAD_COUNT || !xActive[c])
+	if (c < 0 || c >= XPAD_COUNT || !xActive[c]) {
+		prev_X[i] = 0;
+		prev_Y[i] = 0;
 		return 0;
+	}
 
 	wb = xStates[c].Gamepad.wButtons;
 	lx = xStates[c].Gamepad.sThumbLX;
 	ly = xStates[c].Gamepad.sThumbLY;
 
-	if ((wb & XINPUT_GAMEPAD_DPAD_LEFT)  || lx < -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) bits |= CONTROL_LEFT;
-	if ((wb & XINPUT_GAMEPAD_DPAD_RIGHT) || lx >  XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) bits |= CONTROL_RIGHT;
-	if ((wb & XINPUT_GAMEPAD_A)    || ly >  XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) bits |= CONTROL_UP;
-	if ((wb & XINPUT_GAMEPAD_DPAD_DOWN)  || ly < -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE) bits |= CONTROL_DOWN;
-	if (wb & (XINPUT_GAMEPAD_B | XINPUT_GAMEPAD_X | XINPUT_GAMEPAD_Y))
-		bits |= CONTROL_FIRE;
+	dpad_left  = (wb & XINPUT_GAMEPAD_DPAD_LEFT)  || lx < -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
+	dpad_right = (wb & XINPUT_GAMEPAD_DPAD_RIGHT) || lx >  XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
+	dpad_up    = (wb & XINPUT_GAMEPAD_DPAD_UP)    || ly >  XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
+	dpad_down  = (wb & XINPUT_GAMEPAD_DPAD_DOWN)  || ly < -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
+
+	press_X = (wb & XINPUT_GAMEPAD_X) ? 1 : 0;
+	press_Y = (wb & XINPUT_GAMEPAD_Y) ? 1 : 0;
+	press_B = (wb & XINPUT_GAMEPAD_B) ? 1 : 0;
+	release_X = !press_X && prev_X[i];
+	edge_Y    = press_Y && !prev_Y[i];
+	prev_X[i] = (U8)press_X;
+	prev_Y[i] = (U8)press_Y;
+
+	if (press_X) {
+		/* Hold: keep the gun pose visible. Trigger is cleared on
+		 * release_X (next branch). */
+		bits = CONTROL_FIRE | CONTROL_UP;
+	}
+	else if (release_X) {
+		/* One-frame FIRE-only pulse so e_rick.c:515 clears the trigger
+		 * latch; without this a second tap on X would never fire. */
+		bits = CONTROL_FIRE;
+	}
+	else if (edge_Y) {
+		bits = CONTROL_FIRE | CONTROL_DOWN;     /* place bomb, one frame */
+	}
+	else if (press_Y) {
+		/* Held Y: emit plain FIRE so the bomb path's trigger-equivalent
+		 * (the bombs_get_ent guard) coexists with eventual re-fire. */
+		bits = CONTROL_FIRE;
+	}
+	else if (press_B) {                         /* use stick (stop pose) */
+		bits = CONTROL_FIRE;
+		if (dpad_left)       bits |= CONTROL_LEFT;
+		else if (dpad_right) bits |= CONTROL_RIGHT;
+		else {
+			/* No stick input -> use facing direction so B alone still
+			 * triggers the stop pose. */
+			if (ricks[i].dir == LEFT) bits |= CONTROL_LEFT;
+			else                      bits |= CONTROL_RIGHT;
+		}
+	}
+	else {
+		if (dpad_left)  bits |= CONTROL_LEFT;
+		if (dpad_right) bits |= CONTROL_RIGHT;
+		if (dpad_up)    bits |= CONTROL_UP;
+		if (dpad_down)  bits |= CONTROL_DOWN;
+		if (wb & XINPUT_GAMEPAD_A) bits |= CONTROL_UP; /* jump */
+	}
 
 	/* Pause / end / exit are P1-only globals in the rest of the codebase;
 	 * we only emit them for the player slot that owns those globals. */
@@ -88,6 +165,8 @@ sysxinput_init(void)
 {
 	memset(xActive,   0, sizeof(xActive));
 	memset(pad_owned, 0, sizeof(pad_owned));
+	memset(prev_X,    0, sizeof(prev_X));
+	memset(prev_Y,    0, sizeof(prev_Y));
 }
 
 void
@@ -106,7 +185,7 @@ sysxinput_apply(void)
 	for (i = 0; i < CONTROL_PLAYERS; i++)
 	{
 		c = sysxinput_player[i];
-		newbits = read_pad_bits(c, (i == 0) ? 1 : 0);
+		newbits = read_pad_bits(i, c, (i == 0) ? 1 : 0);
 
 		/* Clear exactly the bits we set last frame, then OR in this
 		 * frame's. Keyboard bits we didn't set are left untouched. */
