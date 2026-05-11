@@ -393,9 +393,12 @@ void ents_paintAll()
 			maps_paintRect(extra_bomb_ents[i].prev_x, extra_bomb_ents[i].prev_y, 0x20, 0x15);
 	}
 
-	/* foreground loop : draw all entities that are visible */
+	/* foreground loop : draw all entities that are visible.
+	 * Bomb 0 (ent_ents[E_BOMB_NO]) is deferred until after every Rick has
+	 * been painted so dynamite always renders on top of players. */
 	for (i = 0; ent_ents[i].n != 0xff; i++)
 	{
+		if (i == E_BOMB_NO) continue;
 		if (ent_ents[i].n && (env_highlight || ent_ents[i].sprite))
 		{
 			/* if entitiy is active, draw the sprite. */
@@ -410,8 +413,10 @@ void ents_paintAll()
 			{
 				/* Hat band: 6 rows from the first opaque row of the sprite,
 				 * trimmed to 5 when the Rick is flying-into-foreground
-				 * (zombie pose), since that sprite shows less of the head. */
+				 * (zombie pose), extended by 7 when climbing (the ladder
+				 * pose puts more of the body above the normal head band). */
 				U8 rows = R_STTST(0, E_RICK_STZOMBIE) ? 5 : 6;
+				if (R_STTST(0, E_RICK_STCLIMB)) rows += 7;
 				sprites_paintHat(0, ent_ents[i].sprite,
 					ent_ents[i].x, ent_ents[i].y,
 					ent_ents[i].front, rows);
@@ -426,6 +431,7 @@ void ents_paintAll()
 		{
 			U8 ri = (U8)(i + 1);
 			U8 rows = R_STTST(ri, E_RICK_STZOMBIE) ? 5 : 6;
+			if (R_STTST(ri, E_RICK_STCLIMB)) rows += 7;
 			sprites_paint2(e->sprite, e->x, e->y, e->front);
 			sprites_paintHat(ri, e->sprite, e->x, e->y, e->front, rows);
 		}
@@ -437,6 +443,12 @@ void ents_paintAll()
 		if (e->n && (env_highlight || e->sprite))
 			sprites_paint2(e->sprite, e->x, e->y, e->front);
 	}
+	/* Draw Bomb 0 now (deferred from the main loop above) so dynamite
+	 * is painted on top of every Rick. */
+	if (ent_ents[E_BOMB_NO].n && (env_highlight || ent_ents[E_BOMB_NO].sprite))
+		sprites_paint2(ent_ents[E_BOMB_NO].sprite,
+			ent_ents[E_BOMB_NO].x, ent_ents[E_BOMB_NO].y,
+			ent_ents[E_BOMB_NO].front);
 	/* Co-op: foreground draw for extra bombs. */
 	for (i = 0; i < RICK_MAX - 1; i++)
 	{
