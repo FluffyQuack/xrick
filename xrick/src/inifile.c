@@ -9,6 +9,7 @@
 #include "inifile.h"
 
 #include "system.h"
+#include "syssnd.h" /* SYSSND_MAXVOL */
 #include "e_rick.h" /* RICK_MAX */
 
 #include <stdio.h>
@@ -23,6 +24,7 @@
 int inifile_playerCount = 1;
 int inifile_linearFilter = 1;
 int inifile_scale = 2;
+U8 inifile_volume = SYSSND_MAXVOL;
 
 static void
 trim(char *s)
@@ -88,14 +90,20 @@ inifile_load(const char *path)
 			if (n > 16) n = 16;
 			inifile_scale = n;
 		}
+		else if (!strcasecmp(key, "Volume")) {
+			n = atoi(val);
+			if (n < 0) n = 0;
+			if (n > SYSSND_MAXVOL) n = SYSSND_MAXVOL;
+			inifile_volume = (U8)n;
+		}
 		else {
 			sys_printf("xrick/inifile: unknown key '%s'\n", key);
 		}
 	}
 
 	fclose(f);
-	sys_printf("xrick/inifile: loaded '%s' (PlayerCount=%d, LinearFilter=%d, Scale=%d)\n",
-	           path, inifile_playerCount, inifile_linearFilter, inifile_scale);
+	sys_printf("xrick/inifile: loaded '%s' (PlayerCount=%d, LinearFilter=%d, Scale=%d, Volume=%d)\n",
+	           path, inifile_playerCount, inifile_linearFilter, inifile_scale, (int)inifile_volume);
 }
 
 void
@@ -120,6 +128,7 @@ inifile_save(const char *path)
 	fprintf(f, "PlayerCount = %d\n", inifile_playerCount);
 	fprintf(f, "LinearFilter = %d\n", inifile_linearFilter);
 	fprintf(f, "Scale = %d\n", inifile_scale);
+	fprintf(f, "Volume = %d\n", (int)inifile_volume);
 
 	fclose(f);
 	sys_printf("xrick/inifile: saved '%s'\n", path);

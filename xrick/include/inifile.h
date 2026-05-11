@@ -11,6 +11,8 @@
 #ifndef _INIFILE_H
 #define _INIFILE_H
 
+#include "system.h"
+
 /* Number of active Ricks at game start (1..RICK_MAX). Default 1.
  * Equivalent to pressing 1/2/3/4 on the keyboard. */
 extern int inifile_playerCount;
@@ -22,6 +24,10 @@ extern int inifile_linearFilter;
 /* Window scale multiplier for graphics/resolution. The window is sized
  * to fb_width*Scale by fb_height*Scale. Default 2 matches SYSVID_ZOOM. */
 extern int inifile_scale;
+
+/* Game audio volume (0..SYSSND_MAXVOL). U8 to match the audio system's
+ * user-volume type. Default SYSSND_MAXVOL (full volume). */
+extern U8 inifile_volume;
 
 /* Load and apply the given ini file. Safe to call when the file does
  * not exist (silently no-op). */

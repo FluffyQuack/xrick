@@ -24,6 +24,7 @@
 #include "game.h"
 #include "debug.h"
 #include "data.h"
+#include "inifile.h"
 
 #ifdef EMSCRIPTEN
 #define SDL_mutexP(m)
@@ -164,8 +165,12 @@ syssnd_init(void)
 
   if (sysarg_args_vol != 0) {
     sndUVol = sysarg_args_vol;
-    sndVol = SDL_MIX_MAXVOLUME * sndUVol / SYSSND_MAXVOL;
   }
+  else {
+    sndUVol = inifile_volume;
+  }
+  if (sndUVol > SYSSND_MAXVOL) sndUVol = SYSSND_MAXVOL;
+  sndVol = SDL_MIX_MAXVOLUME * sndUVol / SYSSND_MAXVOL;
 
   for (c = 0; c < SYSSND_MIXCHANNELS; c++)
     channel[c].loop = 0;  /* deactivate */
