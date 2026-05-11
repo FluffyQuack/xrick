@@ -41,14 +41,17 @@ bullets_get_offsx(U8 i)
 }
 
 /*
- * Step a single bullet: move it, deactivate if it leaves the screen or
- * hits a solid map tile. Shared by Bullet 0 (slot 2) and the extras.
+ * Step a single bullet: move it, deactivate if it leaves the screen,
+ * hits a solid map tile, or strikes another Rick. Shared by Bullet 0
+ * (slot 2) and the extras. `owner` is the firing Rick's slot index so
+ * the bullet doesn't kill its own shooter.
  */
 static void
-bullet_step(ent_t *b)
+bullet_step(ent_t *b, U8 owner)
 {
-  U16 xc, yc;
+  U16 xc, yc, tip;
   S8 offsx = (S8)b->c1;
+  U8 r;
 
   b->x += offsx;
 
@@ -61,6 +64,23 @@ bullet_step(ent_t *b)
   yc = b->y + 0x05;
   if (map_eflg[map_map[yc >> 3][xc >> 3]] & MAP_EFLG_SOLID) {
     b->n = 0;
+    return;
+  }
+
+  /* Bullet vs. other Ricks: same "tip" point used against enemies. */
+  tip = b->x + (offsx < 0 ? 0 : 0x18);
+  for (r = 0; r < RICK_MAX; r++) {
+    ent_t *rent;
+    if (r == owner) continue;
+    if (!rick_active[r]) continue;
+    if (R_STTST(r, E_RICK_STDEAD | E_RICK_STZOMBIE)) continue;
+    rent = ricks_get_ent(r);
+    if (rent->x < tip && tip <= rent->x + rent->w &&
+        rent->y < b->y && b->y <= rent->y + rent->h) {
+      b->n = 0;
+      e_rick_gozombie(r);
+      return;
+    }
   }
 }
 
@@ -97,7 +117,7 @@ e_bullet_init(U16 x, U16 y, U8 dir, U8 owner)
 void
 e_bullet_action(UNUSED(U8 e))
 {
-  bullet_step(&ent_ents[E_BULLET_NO]);
+  bullet_step(&ent_ents[E_BULLET_NO], 0);
 }
 
 
@@ -111,7 +131,7 @@ bullets_extra_action(void)
   U8 i;
   for (i = 0; i < RICK_MAX - 1; i++) {
     if (extra_bullet_ents[i].n)
-      bullet_step(&extra_bullet_ents[i]);
+      bullet_step(&extra_bullet_ents[i], i + 1);
   }
 }
 
