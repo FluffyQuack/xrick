@@ -151,18 +151,24 @@ inifile_save(const char *path)
 		return;
 	}
 
-	fprintf(f, "PlayerCount = %d\n", inifile_playerCount);
-	fprintf(f, "LinearFilter = %d\n", inifile_linearFilter);
-	fprintf(f, "Scale = %d\n", inifile_scale);
-	fprintf(f, "Volume = %d\n", (int)inifile_volume);
+	fprintf(f, "; Quantity of active players\n");
+	fprintf(f, "PlayerCount = %d\n\n", inifile_playerCount);
+	fprintf(f, "; 1 = Bilinear filter, 0 = Nearest-neighbour filter\n");
+	fprintf(f, "LinearFilter = %d\n\n", inifile_linearFilter);
+	fprintf(f, "; Scale multiplier for graphics and window\n");
+	fprintf(f, "Scale = %d\n\n", inifile_scale);
+	fprintf(f, "; Overall sound volume\n");
+	fprintf(f, "Volume = %d\n\n", (int)inifile_volume);
+	fprintf(f, "; Colour hue shift for each player's hat\n");
 	fprintf(f, "HueShift0 = %d\n", inifile_hueShift[0]);
 	fprintf(f, "HueShift1 = %d\n", inifile_hueShift[1]);
 	fprintf(f, "HueShift2 = %d\n", inifile_hueShift[2]);
-	fprintf(f, "HueShift3 = %d\n", inifile_hueShift[3]);
+	fprintf(f, "HueShift3 = %d\n\n", inifile_hueShift[3]);
+	fprintf(f, "; Player xinput/Xbox controller mappings\n");
 	fprintf(f, "XinputPlayer0 = %d\n", inifile_xinputPlayer[0]);
 	fprintf(f, "XinputPlayer1 = %d\n", inifile_xinputPlayer[1]);
 	fprintf(f, "XinputPlayer2 = %d\n", inifile_xinputPlayer[2]);
-	fprintf(f, "XinputPlayer3 = %d\n", inifile_xinputPlayer[3]);
+	fprintf(f, "XinputPlayer3 = %d\n\n", inifile_xinputPlayer[3]);
 
 	fclose(f);
 	sys_printf("xrick/inifile: saved '%s'\n", path);
