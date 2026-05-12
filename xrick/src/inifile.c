@@ -158,7 +158,7 @@ inifile_save(const char *path)
 		return;
 	}
 
-	fprintf(f, "; Quantity of active players\n");
+	fprintf(f, "; Quantity of active players (change in-game with 1,2,3,4 keys)\n");
 	fprintf(f, "PlayerCount = %d\n\n", inifile_playerCount);
 	fprintf(f, "; 1 = Bilinear filter, 0 = Nearest-neighbour filter\n");
 	fprintf(f, "LinearFilter = %d\n\n", inifile_linearFilter);
