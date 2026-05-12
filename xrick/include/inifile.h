@@ -21,6 +21,11 @@ extern int inifile_playerCount;
  * (sharp pixels). Default 1 to preserve previous behaviour. */
 extern int inifile_linearFilter;
 
+/* Render interpolation toggle: 1 = entities drawn at interpolated
+ * positions between 25 fps simulation ticks (smooth), 0 = legacy
+ * 25 fps look. Toggled in-game by F10. Default 1. */
+extern int inifile_interpolate;
+
 /* Window scale multiplier for graphics/resolution. The window is sized
  * to fb_width*Scale by fb_height*Scale. Default 2 matches SYSVID_ZOOM. */
 extern int inifile_scale;
