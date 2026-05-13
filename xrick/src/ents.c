@@ -15,6 +15,7 @@
 
 #include "system.h"
 #include "config.h"
+#include "scroller.h"
 #include "env.h"
 
 #include "ents.h"
@@ -203,7 +204,7 @@ ent_creat2(U8 *e, U16 m)
  * lrow: last visible row of the map -- absolute map coordinate
  */
 void
-ent_actvis(U8 frow, U8 lrow)
+ent_actvis(U8 frow, U8 lrow, U8 mark_just_spawned)
 {
 	U16 m;
 	U8 e;
@@ -352,6 +353,13 @@ ent_actvis(U8 frow, U8 lrow)
      * first AI tick acquires one. 0xff = unset sentinel.
      */
     ent_ents[e].target_rick = 0xff;
+
+    /*
+     * Realtime scroll: tag the freshly-spawned entity so ent_action
+     * skips it for one tick when the realtime boundary activated it
+     * mid-tick. Legacy callers pass 0 (no behavior change).
+     */
+    ent_ents[e].just_spawned = mark_just_spawned;
   }
 }
 
@@ -839,13 +847,17 @@ ent_action(void)
 
   for (i = 0; ent_ents[i].n != 0xff; i++) {
     if (ent_ents[i].n) {
+      if (ent_ents[i].just_spawned) {
+        ent_ents[i].just_spawned = 0;
+        continue;
+      }
       k = ent_ents[i].n & 0x7f;
       if (k == 0x47)
-	e_them_z_action(i);
+        e_them_z_action(i);
       else if (k >= 0x18)
         e_them_t3_action(i);
       else
-	ent_actf[k](i);
+        ent_actf[k](i);
     }
   }
 

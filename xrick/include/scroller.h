@@ -22,6 +22,21 @@
 extern U8 scroll_up(void);
 extern U8 scroll_down(void);
 
+/*
+ * Realtime scroll (Approach A): batch-of-8 shifts driven one shift per
+ * tick, with gameplay running on the same ticks. Request once when the
+ * camera target leaves the deadzone; the batch then ticks itself to
+ * completion. New requests are ignored while a batch is in flight.
+ *
+ * dir is the sign of the desired scroll: positive scrolls up
+ * (world shifts up, camera moves down through the map), negative
+ * scrolls down.
+ */
+extern void scroll_realtime_request(S8 dir);
+extern void scroll_realtime_tick(void);
+extern U8   scroll_realtime_in_progress(void);
+extern void scroll_realtime_reset(void);
+
 #endif
 
 /* eof */

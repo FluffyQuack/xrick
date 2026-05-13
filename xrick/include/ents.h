@@ -101,6 +101,16 @@ typedef struct {
    */
   U16 tick_prev_x;
   U16 tick_prev_y;
+  /*
+   * Realtime scroll: set to 1 by ent_actvis when the boundary
+   * (boundary_up/boundary_down) activates this entity mid-tick. ent_action
+   * skips entities with this flag once and clears it, so a freshly-spawned
+   * enemy doesn't get a same-tick AI step against the just-shifted world --
+   * which manifested as enemies dropping one tile into the floor when the
+   * camera revealed them. Legacy scroll_up/down and map init pass 0, so
+   * their cadence is unchanged.
+   */
+  U8 just_spawned;
 } ent_t;
 
 typedef struct {
@@ -122,7 +132,7 @@ extern U8 ent_sprseq[ENT_NBR_SPRSEQ];
 extern mvstep_t ent_mvstep[ENT_NBR_MVSTEP];
 
 extern void ent_reset(void);
-extern void ent_actvis(U8, U8);
+extern void ent_actvis(U8, U8, U8);
 extern void ent_draw(void);
 extern void ent_clprev(void);
 extern void ent_action(void);

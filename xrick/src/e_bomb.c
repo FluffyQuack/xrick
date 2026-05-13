@@ -267,6 +267,9 @@ bombs_extra_scroll(S16 dy)
 		ent_t *b = &extra_bomb_ents[i];
 		if (!b->n) continue;
 		b->y += dy;
+		/* See ricks_extra_scroll: tick_prev_y must shift with y so
+		 * the render-time interp stays in a single coordinate system. */
+		b->tick_prev_y += dy;
 		if (b->y & 0x8000) {
 			b->n = 0;
 		}

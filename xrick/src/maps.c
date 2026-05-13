@@ -43,6 +43,7 @@
 #include "tiles.h"
 #include "fb.h"
 #include "e_rick.h"
+#include "scroller.h"
 
 /*
  * global vars
@@ -114,20 +115,26 @@ map_init(void)
 	map_expand();
 	ent_reset();
 
+	/* A submap-exit triggered mid-batch (now possible in Approach A,
+	 * since ent_action runs during scroll) would leave scroll_pending
+	 * nonzero on entry to the new submap. Drop it so the new map starts
+	 * clean. */
+	scroll_realtime_reset();
+
 	/* entities that are in the visible part of the map */
 	ent_actvis(
 		map_frow + MAPS_TOPHEIGHT_TL,
-		map_frow + MAPS_TOPHEIGHT_TL+MAPS_VISHEIGHT_TL-1);
+		map_frow + MAPS_TOPHEIGHT_TL+MAPS_VISHEIGHT_TL-1, 0);
 
 	/* entities that are in the hidden top of the map */
 	ent_actvis(
 		map_frow + 0,
-		map_frow + MAPS_TOPHEIGHT_TL-1);
+		map_frow + MAPS_TOPHEIGHT_TL-1, 0);
 
 	/* entities that are in the hidden bottom of the map */
 	ent_actvis(
 		map_frow + MAPS_TOPHEIGHT_TL+MAPS_VISHEIGHT_TL,
-		map_frow + MAPS_TOPHEIGHT_TL+MAPS_VISHEIGHT_TL+MAPS_BOTHEIGHT_TL-1);
+		map_frow + MAPS_TOPHEIGHT_TL+MAPS_VISHEIGHT_TL+MAPS_BOTHEIGHT_TL-1, 0);
 }
 
 

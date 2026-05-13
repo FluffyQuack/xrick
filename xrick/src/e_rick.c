@@ -163,6 +163,9 @@ ricks_extra_scroll(S16 dy)
 		ent_t *e = &extra_rick_ents[i - 1];
 		if (!rick_active[i] || !e->n) continue;
 		e->y += dy;
+		/* Keep tick_prev_y in step with y so the render-time interp
+		 * doesn't lerp across the scroll's coordinate-system shift. */
+		e->tick_prev_y += dy;
 		/*
 		 * Mirror the "scrolled off the world" handling from scroller.c:
 		 * if the Rick has been pushed off the top, hide him. We don't

@@ -85,6 +85,16 @@ rect_t *game_rects = NULL;
 U8 game_interpolate = TRUE;
 
 /*
+ * Realtime camera scroll toggle. When TRUE, the camera follows Rick in
+ * one-row-per-tick batches while gameplay (Rick / bullets / bombs)
+ * keeps running through the pan; the SCROLL_UP / SCROLL_DOWN states
+ * are bypassed. When FALSE the original engine behavior is used: an
+ * 8-tick scroll batch freezes all entity action until the camera
+ * settles. Loaded from the RealtimeScroll key in xrick.ini.
+ */
+U8 game_realtimeScroll = TRUE;
+
+/*
  * Camera interpolation: the scroller shifts the world by 8 px per tick. We
  * keep the per-tick step here (+8 = scrolling up, -8 = scrolling down,
  * 0 = no scroll). The render path uses this to compute a visual offset
@@ -406,8 +416,7 @@ game_run(char *path)
 				 * lag the present by (1 - alpha) * step so the view glides
 				 * to the post-shift position over the tick window.
 				 */
-				if (game_interpolate &&
-				    (game_state == SCROLL_UP || game_state == SCROLL_DOWN))
+				if (game_interpolate && game_scroll_step != 0)
 				{
 					S32 elapsed = (S32)(now - last_tick_us);
 					S32 period  = (S32)last_tick_period_us;
@@ -440,7 +449,7 @@ game_run(char *path)
 				 * STATUSRECT+ent_rects list and lose the full redraw.
 				 */
 				if (game_interpolate && game_state_is_play() &&
-				    game_rects == NULL)
+				    (game_rects == NULL || game_scroll_step != 0))
 				{
 					S32 elapsed = (S32)(now - last_tick_us);
 					S32 period  = (S32)last_tick_period_us;
@@ -450,6 +459,13 @@ game_run(char *path)
 					ents_set_alpha(elapsed, period);
 					game_paintEntities();
 					ents_set_alpha(1, 1);
+					/* During scroll, scroll_realtime_tick set
+					 * game_rects = SCREENRECT for a full refresh;
+					 * game_paintEntities just downgraded that to
+					 * STATUSRECT+ent_rects. Restore the full refresh
+					 * so the shifted playfield reaches the screen. */
+					if (game_scroll_step != 0)
+						game_rects = &draw_SCREENRECT;
 				}
 				sysvid_update(game_rects);
 				draw_STATUSRECT.next = NULL;
@@ -787,6 +803,15 @@ static void game_cycle(void)
 			}
 			else
 			{
+				/*
+				 * Realtime scroll (Approach A): if a scroll batch is in
+				 * flight, advance it by one row before running entity
+				 * action. The shift, entity translation, co-op extras,
+				 * map_frow update, and (on the 8th shift) map_expand +
+				 * ent_actvis all happen inside scroll_realtime_tick;
+				 * gameplay then runs on the freshly-shifted world.
+				 */
+				scroll_realtime_tick();
 				ent_action();      /* run entities */
 				e_them_rndseed++;  /* (0270) */
 				/* Co-op: retire any Rick who walked off the world
@@ -885,7 +910,17 @@ static void game_cycle(void)
 			 * waste work (the render would immediately erase + redraw).
 			 */
 			if (!game_interpolate)
+			{
 				game_paintEntities();
+				/* During a realtime scroll the previous CTRL_ACTION set
+				 * game_rects = SCREENRECT for a full-screen refresh.
+				 * game_paintEntities() just clobbered that with a small
+				 * STATUSRECT+ent_rects list, which would leave the
+				 * shifted playfield un-blitted. Restore the full-screen
+				 * refresh. */
+				if (game_scroll_step != 0)
+					game_rects = &draw_SCREENRECT;
+			}
 			game_state = CTRL_SCROLL;
 			return;
 
@@ -894,21 +929,43 @@ static void game_cycle(void)
 		case CTRL_SCROLL:
 			{
 				U16 cam_y = camera_target_y();
-				if (cam_y == CAMERA_NO_TARGET)
+				if (game_realtimeScroll)
 				{
+					/*
+					 * Approach A: don't gate gameplay on a dedicated
+					 * scroll state. Queue an 8-shift batch when the
+					 * camera target leaves the deadzone; the batch is
+					 * then driven one shift per tick by
+					 * scroll_realtime_tick() at the top of CTRL_ACTION.
+					 * New triggers are ignored while a batch is in
+					 * flight (re-trigger guard inside
+					 * scroll_realtime_request).
+					 */
+					if (!scroll_realtime_in_progress() &&
+					    cam_y != CAMERA_NO_TARGET)
+					{
+						if (cam_y >= 0xcc)
+							scroll_realtime_request(+1);
+						else if (cam_y <= 0x60)
+							scroll_realtime_request(-1);
+					}
 					game_state = CTRL_ACTION;
-				}
-				else if (cam_y >= 0xcc)
-				{
-					game_state = SCROLL_UP;
-				}
-				else if (cam_y <= 0x60)
-				{
-					game_state = SCROLL_DOWN;
 				}
 				else
 				{
-					game_state = CTRL_ACTION;
+					/*
+					 * Original engine path: an 8-tick scroll batch
+					 * runs in SCROLL_UP / SCROLL_DOWN, freezing all
+					 * entity action until the camera settles.
+					 */
+					if (cam_y == CAMERA_NO_TARGET)
+						game_state = CTRL_ACTION;
+					else if (cam_y >= 0xcc)
+						game_state = SCROLL_UP;
+					else if (cam_y <= 0x60)
+						game_state = SCROLL_DOWN;
+					else
+						game_state = CTRL_ACTION;
 				}
 			}
 			break;
