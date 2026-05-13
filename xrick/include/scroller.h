@@ -22,6 +22,16 @@
 extern U8 scroll_up(void);
 extern U8 scroll_down(void);
 
+/*
+ * Real-time scroll: perform all 8 row-shifts atomically in one call.
+ * Snapshots the pre-shift playfield once, shifts map+entities 8x,
+ * fires ent_actvis + map_expand at the end, repaints. Gameplay returns
+ * to CTRL_ACTION on the next tick instead of stalling for 8 ticks.
+ * The visual slide is handled by game.c's catch-up state.
+ */
+extern void scroll_up_atomic(void);
+extern void scroll_down_atomic(void);
+
 #endif
 
 /* eof */

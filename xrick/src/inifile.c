@@ -30,6 +30,8 @@ int inifile_scale = 2;
 U8 inifile_volume = SYSSND_MAXVOL;
 int inifile_hueShift[4] = { 0, 120, 240, 60 };
 int inifile_xinputPlayer[4] = { 0, 1, 2, 3 };
+int inifile_realtimeScroll = 1;
+int inifile_scrollCatchupFrames = 8;
 /* Default hat row count (hat covers the top of Rick's sprite). Crouching
  * extends it by +5; flying-into-foreground (zombie) trims it by -2. */
 
@@ -128,6 +130,16 @@ inifile_load(const char *path)
 			inifile_xinputPlayer[idx] = n;
 			sysxinput_player[idx] = n;
 		}
+		else if (!strcasecmp(key, "RealtimeScroll")) {
+			inifile_realtimeScroll = atoi(val) ? 1 : 0;
+			game_realtime_scroll = (U8)inifile_realtimeScroll;
+		}
+		else if (!strcasecmp(key, "ScrollCatchupFrames")) {
+			n = atoi(val);
+			if (n < 1)  n = 1;
+			if (n > 30) n = 30;
+			inifile_scrollCatchupFrames = n;
+		}
 		else {
 			sys_printf("xrick/inifile: unknown key '%s'\n", key);
 		}
@@ -151,6 +163,7 @@ inifile_save(const char *path)
 	if (pc > RICK_MAX) pc = RICK_MAX;
 	inifile_playerCount = pc;
 	inifile_interpolate = game_interpolate ? 1 : 0;
+	inifile_realtimeScroll = game_realtime_scroll ? 1 : 0;
 
 	f = fopen(path, "w");
 	if (!f) {
@@ -178,6 +191,10 @@ inifile_save(const char *path)
 	fprintf(f, "XinputPlayer1 = %d\n", inifile_xinputPlayer[1]);
 	fprintf(f, "XinputPlayer2 = %d\n", inifile_xinputPlayer[2]);
 	fprintf(f, "XinputPlayer3 = %d\n\n", inifile_xinputPlayer[3]);
+	fprintf(f, "; 1 = Atomic shift + camera catch-up (gameplay never pauses), 0 = Original 8-tick paused scroll (toggle in-game with F11)\n");
+	fprintf(f, "RealtimeScroll = %d\n\n", inifile_realtimeScroll);
+	fprintf(f, "; Number of ticks the camera takes to visually catch up after a real-time scroll (1..30)\n");
+	fprintf(f, "ScrollCatchupFrames = %d\n\n", inifile_scrollCatchupFrames);
 
 	fclose(f);
 	sys_printf("xrick/inifile: saved '%s'\n", path);

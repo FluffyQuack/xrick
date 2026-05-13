@@ -33,6 +33,7 @@
 #include "scroller.h"
 #include "control.h"
 #include "data.h"
+#include "inifile.h"
 #include "fb.h"
 #include "tiles.h"
 #include "sprites.h"
@@ -85,6 +86,15 @@ rect_t *game_rects = NULL;
 U8 game_interpolate = TRUE;
 
 /*
+ * Real-time scroll toggle (F11). When TRUE, scrolling shifts the world
+ * the full 64 px in one tick and the camera then visually catches up
+ * over inifile_scrollCatchupFrames ticks without freezing gameplay.
+ * When FALSE, the original engine behavior is restored: scrolling
+ * pauses gameplay for 8 ticks while the world shifts one row per tick.
+ */
+U8 game_realtime_scroll = TRUE;
+
+/*
  * Camera interpolation: the scroller shifts the world by 8 px per tick. We
  * keep the per-tick step here (+8 = scrolling up, -8 = scrolling down,
  * 0 = no scroll). The render path uses this to compute a visual offset
@@ -92,6 +102,27 @@ U8 game_interpolate = TRUE;
  * the post-shift position over the tick window instead of snapping.
  */
 S8 game_scroll_step = 0;
+
+/*
+ * Real-time scroll camera catch-up.
+ *
+ * When a real-time scroll fires, the world shifts by a full 64 px block
+ * in a single tick (via scroll_up_atomic / scroll_down_atomic). The
+ * camera then visually glides into place over inifile_scrollCatchupFrames
+ * ticks while gameplay continues normally on top.
+ *
+ *   game_catchup_step       : initial visual offset, +64 (up) / -64 (down)
+ *                             / 0 (idle). Sign convention matches
+ *                             game_scroll_step (positive = scroll_up).
+ *   game_catchup_start_us   : wall time the catch-up started.
+ *   game_catchup_duration_us: total duration of the catch-up window.
+ *
+ * On re-trigger during an active catch-up, these are reset so the
+ * residual offset snaps to 0 and a new slide starts from the new shift.
+ */
+S16 game_catchup_step = 0;
+U32 game_catchup_start_us = 0;
+U32 game_catchup_duration_us = 0;
 
 #ifdef GFXST
 hscore_t game_hscores[8] = {
@@ -401,13 +432,42 @@ game_run(char *path)
 			if ((S32)(now - next_render_us) >= 0)
 			{
 				/*
-				 * Camera interpolation: during a scroll the world data
-				 * has already been shifted by the current tick; visually
-				 * lag the present by (1 - alpha) * step so the view glides
-				 * to the post-shift position over the tick window.
+				 * Camera catch-up: a real-time scroll just happened (the
+				 * world is already at its post-shift state). Visually lag
+				 * the present so the view glides to the post-shift
+				 * position over the catch-up window. Same composite shape
+				 * as the legacy per-tick interp (OLD slides off, NEW
+				 * slides in) -- just stretched across N ticks instead of
+				 * one, and decoupled from game_state so gameplay can run
+				 * normally on top.
+				 *
+				 * Legacy fallback: if a SCROLL_UP/SCROLL_DOWN state is
+				 * ever reached (shouldn't be possible via CTRL_SCROLL
+				 * with the atomic path wired in, but kept defensively),
+				 * fall back to the original per-tick interpolation.
 				 */
-				if (game_interpolate &&
-				    (game_state == SCROLL_UP || game_state == SCROLL_DOWN))
+				if (game_interpolate && game_catchup_step != 0)
+				{
+					S32 elapsed = (S32)(now - game_catchup_start_us);
+					S32 duration = (S32)game_catchup_duration_us;
+					if (duration <= 0) duration = 1;
+					if (elapsed < 0) elapsed = 0;
+					if (elapsed >= duration)
+					{
+						game_catchup_step = 0;
+						sysvid_view_dy = 0;
+						sysvid_view_dy_old = 0;
+					}
+					else
+					{
+						sysvid_view_dy = (S16)
+							((S32)game_catchup_step * (duration - elapsed) / duration);
+						sysvid_view_dy_old =
+							(S16)(sysvid_view_dy - game_catchup_step);
+					}
+				}
+				else if (game_interpolate &&
+				         (game_state == SCROLL_UP || game_state == SCROLL_DOWN))
 				{
 					S32 elapsed = (S32)(now - last_tick_us);
 					S32 period  = (S32)last_tick_period_us;
@@ -416,12 +476,6 @@ game_run(char *path)
 					if (elapsed > period) elapsed = period;
 					sysvid_view_dy = (S16)
 						((S32)game_scroll_step * (period - elapsed) / period);
-					/* OLD playfield (pre-scroll snapshot) lerps in the
-					 * opposite phase: same direction, offset by step. At
-					 * tick start the OLD frame is at its rest position
-					 * (dy_old = 0) and the NEW frame is shifted by step;
-					 * at tick end OLD is shifted by -step (off the
-					 * uncovered edge) and NEW is at rest. */
 					sysvid_view_dy_old =
 						(S16)(sysvid_view_dy - (S16)game_scroll_step);
 				}
@@ -898,13 +952,57 @@ static void game_cycle(void)
 				{
 					game_state = CTRL_ACTION;
 				}
-				else if (cam_y >= 0xcc)
+				else if ((cam_y >= 0xcc || cam_y <= 0x60) && !game_realtime_scroll)
 				{
-					game_state = SCROLL_UP;
+					/* Legacy path: pause gameplay and shift one row per
+					 * tick over 8 ticks. */
+					if (cam_y >= 0xcc) game_state = SCROLL_UP;
+					else               game_state = SCROLL_DOWN;
 				}
-				else if (cam_y <= 0x60)
+				else if (cam_y >= 0xcc || cam_y <= 0x60)
 				{
-					game_state = SCROLL_DOWN;
+					/*
+					 * Real-time scroll: shift the world the full 64 px
+					 * in this tick, then start a multi-tick visual
+					 * catch-up. Next tick resumes at CTRL_ACTION so
+					 * entities keep updating while the camera glides
+					 * into place.
+					 *
+					 * We `return;` (not `break;`) so the rest of the
+					 * cycle doesn't run this tick. Two reasons:
+					 *   (a) legacy SCROLL_UP/DOWN per-tick calls also
+					 *       return rather than falling through, so this
+					 *       matches the engine's "one scroll-tick = one
+					 *       row-shift" cadence (we just compressed all 8
+					 *       row-shifts into the single tick).
+					 *   (b) if we fell through, PAINT (in non-interp
+					 *       mode) would call game_paintEntities() which
+					 *       overwrites game_rects with status+sprite
+					 *       rects, clobbering the SCREENRECT the scroll
+					 *       set -- only the sprite regions would be
+					 *       presented and the new map content would
+					 *       never reach the screen.
+					 *
+					 * Re-trigger during an in-flight catch-up: the
+					 * residual offset is replaced by a fresh ±64 starting
+					 * now, so any partial slide instantly snaps to its
+					 * end state.
+					 */
+					U32 now_us = sys_gettime_us();
+					U32 frames = (U32)inifile_scrollCatchupFrames;
+					if (frames < 1) frames = 1;
+
+					if (cam_y >= 0xcc) {
+						scroll_up_atomic();
+						game_catchup_step = 64;
+					} else {
+						scroll_down_atomic();
+						game_catchup_step = -64;
+					}
+					game_catchup_start_us = now_us;
+					game_catchup_duration_us = frames * last_tick_period_us;
+					game_state = CTRL_ACTION;
+					return;
 				}
 				else
 				{
@@ -969,6 +1067,10 @@ static void game_cycle(void)
 
 		case INIT_SUBMAP:
 
+			/* Submap entry invalidates any in-flight camera catch-up:
+			 * the OLD snapshot belonged to the previous submap's
+			 * playfield and would smear into the new map's render. */
+			game_catchup_step = 0;
 			map_init();                     /* initialize the map */
 			/*
 			 * Co-op: anchor all Ricks on whichever one triggered the exit.

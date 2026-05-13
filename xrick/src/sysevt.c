@@ -234,6 +234,14 @@ processEvent()
 			 * each rendered frame. */
 			game_interpolate = !game_interpolate;
 		}
+		else if (key == SDL_SCANCODE_F11) {
+			/* Toggle real-time scrolling. ON: scroll is atomic in one
+			 * tick and the camera catches up visually while gameplay
+			 * continues. OFF: original engine behavior -- gameplay
+			 * pauses for 8 ticks while the world shifts one row per
+			 * tick. */
+			game_realtime_scroll = !game_realtime_scroll;
+		}
 		break;
 
 	case SDL_KEYUP:

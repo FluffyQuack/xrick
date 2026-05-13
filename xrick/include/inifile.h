@@ -45,6 +45,17 @@ extern int inifile_hueShift[4];
  * so the ini loader doesn't need to depend on the xinput module. */
 extern int inifile_xinputPlayer[4];
 
+/* Real-time scroll toggle: 1 = atomic shift + camera catch-up while
+ * gameplay continues, 0 = original 8-tick paused scroll. Toggled in-
+ * game by F11. Default 1. */
+extern int inifile_realtimeScroll;
+
+/* How many game ticks the visual camera catch-up takes after a scroll.
+ * The scroll itself happens in a single tick (gameplay never pauses);
+ * the camera then visually glides into place over this many ticks.
+ * 8 matches the original 8-tick scroll feel. Clamped to [1, 30]. */
+extern int inifile_scrollCatchupFrames;
+
 /* Load and apply the given ini file. Safe to call when the file does
  * not exist (silently no-op). */
 void inifile_load(const char *path);
