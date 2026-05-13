@@ -30,29 +30,26 @@
 
 static U8 period;
 
+/* Net row-shift accumulator for realtime mode. +1 per up-shift, -1 per
+ * down-shift. When |accum| hits 8 we've crossed a block boundary in the
+ * current direction and need to refresh the off-screen hardbuffers via
+ * map_expand + ent_actvis -- the same trigger the legacy 8-tick batch
+ * uses at n==7. Reset by scroll_reset() on submap entry. */
+static S8 rt_accum = 0;
+
 /*
- * Scroll up
+ * Shift the world up by one row.
  *
+ * Mutates map_map (rows MAP_ROW_SCRTOP..MAP_ROW_HBBOT-1 take their values
+ * from one row below), translates every entity by y -= 8 (retiring any
+ * that fall off the top of the world), keeps co-op extras in step, and
+ * advances map_frow by 1. Sets game_scroll_step = +8 and snapshots the
+ * pre-shift framebuffer so the render path can lerp.
  */
-U8
-scroll_up(void)
+static void
+shift_up_one_row(void)
 {
   U8 i, j;
-  static U8 n = 0;
-
-  /* last call: restore */
-  if (n == 8) {
-    n = 0;
-    game_period = period;
-    game_scroll_step = 0;  /* camera back to its rest position */
-    return SCROLL_DONE;
-  }
-
-  /* first call: prepare */
-  if (n == 0) {
-    period = game_period;
-    game_period = SCROLL_PERIOD;
-  }
 
   /* Camera interp: world is about to shift up by 8. Renders during this
    * tick will lag the camera by (1 - alpha) * 8 so the view glides up. */
@@ -90,58 +87,24 @@ scroll_up(void)
   ricks_kill_oob();
 
   /* display */
-	maps_paint();
+  maps_paint();
   ents_paintAll();
   env_paintGame();
   map_frow++;
-
-  /* loop */
-  if (n++ == 7) {
-    /* activate visible entities */
-    ent_actvis(map_frow + MAP_ROW_HBTOP, map_frow + MAP_ROW_HBBOT);
-
-    /* prepare map */
-    map_expand();
-
-    /* display */
-	maps_paint();
-    ents_paintAll();
-    env_paintGame();
-  }
-
-  game_rects = &draw_SCREENRECT;
-
-  return SCROLL_RUNNING;
 }
 
 /*
- * Scroll down
- *
+ * Shift the world down by one row. Mirror of shift_up_one_row.
  */
-U8
-scroll_down(void)
+static void
+shift_down_one_row(void)
 {
   U8 i, j;
-  static U8 n = 0;
-
-  /* last call: restore */
-  if (n == 8) {
-    n = 0;
-    game_period = period;
-    game_scroll_step = 0;  /* camera back to its rest position */
-    return SCROLL_DONE;
-  }
-
-  /* first call: prepare */
-  if (n == 0) {
-    period = game_period;
-    game_period = SCROLL_PERIOD;
-  }
 
   /* Camera interp: world is about to shift down by 8. */
   game_scroll_step = -8;
 
-  /* See scroll_up: capture pre-shift fb for the smooth-scroll lerp. */
+  /* See shift_up_one_row: capture pre-shift fb for the smooth-scroll lerp. */
   sysvid_snapshot_playfield();
 
   /* translate map */
@@ -171,28 +134,156 @@ scroll_down(void)
   ricks_kill_oob();
 
   /* display */
-	maps_paint();
+  maps_paint();
   ents_paintAll();
   env_paintGame();
   map_frow--;
+}
+
+/*
+ * Block-boundary work for an upward scroll: activate entities entering
+ * the newly-exposed band at the bottom and refill all hardbuffer rows
+ * from map data via map_expand. Called once every 8 up-shifts.
+ */
+static void
+boundary_up(void)
+{
+  ent_actvis(map_frow + MAP_ROW_HBTOP, map_frow + MAP_ROW_HBBOT);
+  map_expand();
+  maps_paint();
+  ents_paintAll();
+  env_paintGame();
+}
+
+/*
+ * Block-boundary work for a downward scroll. Mirror of boundary_up,
+ * activating entities in the band entering from the top.
+ */
+static void
+boundary_down(void)
+{
+  ent_actvis(map_frow + MAP_ROW_HTTOP, map_frow + MAP_ROW_HTBOT);
+  map_expand();
+  maps_paint();
+  ents_paintAll();
+  env_paintGame();
+}
+
+/*
+ * Scroll up
+ *
+ */
+U8
+scroll_up(void)
+{
+  static U8 n = 0;
+
+  /* last call: restore */
+  if (n == 8) {
+    n = 0;
+    game_period = period;
+    game_scroll_step = 0;  /* camera back to its rest position */
+    return SCROLL_DONE;
+  }
+
+  /* first call: prepare */
+  if (n == 0) {
+    period = game_period;
+    game_period = SCROLL_PERIOD;
+  }
+
+  shift_up_one_row();
 
   /* loop */
   if (n++ == 7) {
-    /* activate visible entities */
-    ent_actvis(map_frow + MAP_ROW_HTTOP, map_frow + MAP_ROW_HTBOT);
-
-    /* prepare map */
-    map_expand();
-
-    /* display */
-	maps_paint();
-    ents_paintAll();
-    env_paintGame();
+    boundary_up();
   }
 
   game_rects = &draw_SCREENRECT;
 
   return SCROLL_RUNNING;
+}
+
+/*
+ * Scroll down
+ *
+ */
+U8
+scroll_down(void)
+{
+  static U8 n = 0;
+
+  /* last call: restore */
+  if (n == 8) {
+    n = 0;
+    game_period = period;
+    game_scroll_step = 0;  /* camera back to its rest position */
+    return SCROLL_DONE;
+  }
+
+  /* first call: prepare */
+  if (n == 0) {
+    period = game_period;
+    game_period = SCROLL_PERIOD;
+  }
+
+  shift_down_one_row();
+
+  /* loop */
+  if (n++ == 7) {
+    boundary_down();
+  }
+
+  game_rects = &draw_SCREENRECT;
+
+  return SCROLL_RUNNING;
+}
+
+/*
+ * Realtime follow-cam: do at most one row-shift per tick, then let the
+ * caller continue with normal CTRL_ACTION the same tick. dir is +1
+ * (camera follows Rick up), -1 (down), or 0 (no shift this tick).
+ *
+ * The accumulator tracks net displacement since the last block-boundary
+ * crossing so map_expand / ent_actvis fire on the same 8-row cadence as
+ * the legacy batch. A direction reversal that brings the accumulator
+ * back toward 0 does NOT trigger a boundary -- shifting back into a
+ * region whose hardbuffer was never refilled is the desired behaviour
+ * (the data is still there from the original expand at this position).
+ */
+void
+scroll_realtime_step(S8 dir)
+{
+  if (dir == 0) {
+    game_scroll_step = 0;
+    return;
+  }
+
+  if (dir > 0) {
+    shift_up_one_row();
+    rt_accum++;
+    if (rt_accum >= 8) {
+      boundary_up();
+      rt_accum = 0;
+    }
+  }
+  else {
+    shift_down_one_row();
+    rt_accum--;
+    if (rt_accum <= -8) {
+      boundary_down();
+      rt_accum = 0;
+    }
+  }
+
+  game_rects = &draw_SCREENRECT;
+}
+
+void
+scroll_reset(void)
+{
+  rt_accum = 0;
+  game_scroll_step = 0;
 }
 
 /* eof */

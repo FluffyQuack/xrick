@@ -43,6 +43,7 @@
 #include "tiles.h"
 #include "fb.h"
 #include "e_rick.h"
+#include "scroller.h"
 
 /*
  * global vars
@@ -112,6 +113,9 @@ map_init(void)
 #endif
 	map_eflg_expand((map_submaps[env_submap].page == 1) ? 0x10 : 0x00);
 	map_expand();
+	/* New submap: realtime scroller's block-boundary counter must be
+	 * re-aligned to the freshly expanded map_frow. */
+	scroll_reset();
 	ent_reset();
 
 	/* entities that are in the visible part of the map */

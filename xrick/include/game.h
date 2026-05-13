@@ -68,6 +68,9 @@ extern U8 game_waitevt;    /* wait for events (TRUE, FALSE) */
 extern U8 game_period;     /* time between each frame, in millisecond */
 extern U8 game_interpolate; /* render interpolation toggle (F10) */
 extern S8 game_scroll_step; /* +8/-8 during a scroll tick, 0 otherwise */
+extern U8 game_realtime_scroll; /* 1 = follow-cam, gameplay keeps running
+                                 * during scrolls; 0 = legacy 8-tick paused
+                                 * batch. Loaded from xrick.ini. */
 
 extern rect_t *game_rects; /* rectangles to redraw at each frame */
 

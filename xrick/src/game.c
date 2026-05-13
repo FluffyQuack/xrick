@@ -93,6 +93,15 @@ U8 game_interpolate = TRUE;
  */
 S8 game_scroll_step = 0;
 
+/*
+ * Realtime follow-cam toggle. When 1, CTRL_SCROLL does at most one
+ * row-shift per tick and falls through to CTRL_ACTION so Rick / enemies
+ * / bullets keep updating during the scroll. When 0 (legacy), the
+ * 8-tick SCROLL_UP/SCROLL_DOWN batch runs and gameplay logic is gated
+ * out for the duration. Loaded from xrick.ini ("RealtimeScroll").
+ */
+U8 game_realtime_scroll = TRUE;
+
 #ifdef GFXST
 hscore_t game_hscores[8] = {
   { 8000, "SIMES@@@@@" },
@@ -894,21 +903,30 @@ static void game_cycle(void)
 		case CTRL_SCROLL:
 			{
 				U16 cam_y = camera_target_y();
-				if (cam_y == CAMERA_NO_TARGET)
+				S8  dir   = 0;
+				if (cam_y != CAMERA_NO_TARGET)
 				{
+					if (cam_y >= 0xcc)      dir = +1;
+					else if (cam_y <= 0x60) dir = -1;
+				}
+
+				if (game_realtime_scroll)
+				{
+					/* Follow-cam: do one row-shift inline (or clear
+					 * game_scroll_step if no shift is needed this tick)
+					 * and continue straight into CTRL_ACTION. The shift
+					 * has already translated every entity's y, so
+					 * ent_action below operates in the post-shift frame
+					 * -- same as the first tick after a legacy batch. */
+					scroll_realtime_step(dir);
 					game_state = CTRL_ACTION;
-				}
-				else if (cam_y >= 0xcc)
-				{
-					game_state = SCROLL_UP;
-				}
-				else if (cam_y <= 0x60)
-				{
-					game_state = SCROLL_DOWN;
 				}
 				else
 				{
-					game_state = CTRL_ACTION;
+					/* Legacy: enter the 8-tick paused batch. */
+					if (dir > 0)      game_state = SCROLL_UP;
+					else if (dir < 0) game_state = SCROLL_DOWN;
+					else              game_state = CTRL_ACTION;
 				}
 			}
 			break;

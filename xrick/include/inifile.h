@@ -26,6 +26,11 @@ extern int inifile_linearFilter;
  * 25 fps look. Toggled in-game by F10. Default 1. */
 extern int inifile_interpolate;
 
+/* Realtime camera scrolling: 1 = gameplay keeps running while the camera
+ * follows Rick row-by-row, 0 = original behaviour (an 8-tick batch
+ * pauses gameplay while the world catches up). Default 1. */
+extern int inifile_realtimeScroll;
+
 /* Window scale multiplier for graphics/resolution. The window is sized
  * to fb_width*Scale by fb_height*Scale. Default 2 matches SYSVID_ZOOM. */
 extern int inifile_scale;

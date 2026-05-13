@@ -12,7 +12,7 @@
 #include "syssnd.h" /* SYSSND_MAXVOL */
 #include "e_rick.h" /* RICK_MAX */
 #include "sysxinput.h" /* sysxinput_player */
-#include "game.h" /* game_interpolate */
+#include "game.h" /* game_interpolate, game_realtime_scroll */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +26,7 @@
 int inifile_playerCount = 1;
 int inifile_linearFilter = 1;
 int inifile_interpolate = 1;
+int inifile_realtimeScroll = 1;
 int inifile_scale = 2;
 U8 inifile_volume = SYSSND_MAXVOL;
 int inifile_hueShift[4] = { 0, 120, 240, 60 };
@@ -95,6 +96,10 @@ inifile_load(const char *path)
 			inifile_interpolate = atoi(val) ? 1 : 0;
 			game_interpolate = (U8)inifile_interpolate;
 		}
+		else if (!strcasecmp(key, "RealtimeScroll")) {
+			inifile_realtimeScroll = atoi(val) ? 1 : 0;
+			game_realtime_scroll = (U8)inifile_realtimeScroll;
+		}
 		else if (!strcasecmp(key, "Scale")) {
 			n = atoi(val);
 			if (n < 1) n = 1;
@@ -151,6 +156,7 @@ inifile_save(const char *path)
 	if (pc > RICK_MAX) pc = RICK_MAX;
 	inifile_playerCount = pc;
 	inifile_interpolate = game_interpolate ? 1 : 0;
+	inifile_realtimeScroll = game_realtime_scroll ? 1 : 0;
 
 	f = fopen(path, "w");
 	if (!f) {
@@ -164,6 +170,8 @@ inifile_save(const char *path)
 	fprintf(f, "LinearFilter = %d\n\n", inifile_linearFilter);
 	fprintf(f, "; 1 = Smooth interpolated rendering, 0 = Original 25 fps look (toggle in-game with F10)\n");
 	fprintf(f, "Interpolate = %d\n\n", inifile_interpolate);
+	fprintf(f, "; 1 = Realtime follow-cam scrolling, 0 = Original paused-batch scroll\n");
+	fprintf(f, "RealtimeScroll = %d\n\n", inifile_realtimeScroll);
 	fprintf(f, "; Scale multiplier for graphics and window\n");
 	fprintf(f, "Scale = %d\n\n", inifile_scale);
 	fprintf(f, "; Overall sound volume\n");
