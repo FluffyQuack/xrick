@@ -50,6 +50,13 @@ extern int inifile_xinputPlayer[4];
  * game by F11. Default 1. */
 extern int inifile_realtimeScroll;
 
+/* Legacy fall-landing bug fix: when falling at high speed, the env check
+ * at the tentative new y could detect ground rows several pixels below
+ * the player's current bounding box, causing a one-frame "false landing"
+ * a few pixels above the real ground. 1 = refine landing y (no false
+ * landing), 0 = original behaviour. Default 1. */
+extern int inifile_fixFallLanding;
+
 /* How many game ticks the visual camera catch-up takes after a scroll.
  * The scroll itself happens in a single tick (gameplay never pauses);
  * the camera then visually glides into place over this many ticks.

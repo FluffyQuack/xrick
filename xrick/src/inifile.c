@@ -32,6 +32,7 @@ int inifile_hueShift[4] = { 0, 120, 240, 60 };
 int inifile_xinputPlayer[4] = { 0, 1, 2, 3 };
 int inifile_realtimeScroll = 1;
 int inifile_scrollCatchupFrames = 8;
+int inifile_fixFallLanding = 1;
 /* Default hat row count (hat covers the top of Rick's sprite). Crouching
  * extends it by +5; flying-into-foreground (zombie) trims it by -2. */
 
@@ -140,6 +141,9 @@ inifile_load(const char *path)
 			if (n > 30) n = 30;
 			inifile_scrollCatchupFrames = n;
 		}
+		else if (!strcasecmp(key, "FixFallLanding")) {
+			inifile_fixFallLanding = atoi(val) ? 1 : 0;
+		}
 		else {
 			sys_printf("xrick/inifile: unknown key '%s'\n", key);
 		}
@@ -195,6 +199,8 @@ inifile_save(const char *path)
 	fprintf(f, "RealtimeScroll = %d\n\n", inifile_realtimeScroll);
 	fprintf(f, "; Number of ticks the camera takes to visually catch up after a real-time scroll (1..30)\n");
 	fprintf(f, "ScrollCatchupFrames = %d\n\n", inifile_scrollCatchupFrames);
+	fprintf(f, "; 1 = Fix legacy bug where falling fast could cause a brief mid-air landing just before the ground, 0 = Original behaviour\n");
+	fprintf(f, "FixFallLanding = %d\n\n", inifile_fixFallLanding);
 
 	fclose(f);
 	sys_printf("xrick/inifile: saved '%s'\n", path);

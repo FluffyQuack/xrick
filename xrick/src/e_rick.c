@@ -458,6 +458,35 @@ e_rick_action2(U8 i)
     goto horiz;
   }
   /* else: not climbing + trying to go _down_ not possible -> standing */
+  /*
+   * Legacy bug fix: env was tested at the tentative new y, which can sit
+   * up to 8 pixels below rent->y when falling at the offsy cap. The check
+   * sees the ground row(s) for that future position, but the code below
+   * then aligns the *current* rent->y to 8n+3 -- producing a "landing" y
+   * that's several pixels above the real ground. The player visibly stops
+   * for one frame, gravity resets to 0x0100, and they fall the remaining
+   * distance to the true ground -- the brief mid-air landing players
+   * could see when dropping from a long height.
+   *
+   * Refine rent->y by stepping one pixel at a time toward the tentative
+   * y and stopping right above the obstacle. env1/env0 keep the obstacle's
+   * flags so the SPAD bounce / lethal-tile checks below still trigger.
+   * Gated by inifile_fixFallLanding so the original behaviour can be
+   * restored from xrick.ini.
+   */
+  if (inifile_fixFallLanding) {
+    while (rent->y < y) {
+      U16 yt = rent->y + 1;
+      U8 e0t, e1t;
+      u_envtest(rent->x, yt, R_STTST(i, E_RICK_STCRAWL), &e0t, &e1t);
+      if (e1t & (MAP_EFLG_VERT|MAP_EFLG_SOLID|MAP_EFLG_SPAD|MAP_EFLG_WAYUP)) {
+        env0 = e0t;
+        env1 = e1t;
+        break;
+      }
+      rent->y = yt;
+    }
+  }
   /* align to ground */
   rent->y &= 0xF8;
   rent->y |= 0x03;
