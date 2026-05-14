@@ -215,6 +215,24 @@ ricks_kill_oob(void)
 			 * its very first tick because y is already off the world.
 			 */
 			e->y = (e->y & 0x8000) ? 0x40 : 0x100;
+			/*
+			 * Re-arm the entity. The scroller loops in scroll_up /
+			 * scroll_down set ent_ents[i].n = 0 the moment Rick 0's y
+			 * wrapped off the world (the standard "entity gone"
+			 * retire). For Rick 0 specifically that's fatal here:
+			 * ent_action() only dispatches actf when n != 0, so a
+			 * cleared n means e_rick_action -- and therefore
+			 * e_rick_z_action, which is the only place that promotes
+			 * STZOMBIE -> STDEAD -- never runs. The Rick stays
+			 * STZOMBIE forever, CTRL_RICK's all_dead scan never sees
+			 * him as dead, and when the surviving Rick later dies the
+			 * submap fails to restart (softlock). Ricks 1..3 are
+			 * ticked unconditionally by ricks_extra_action() so they
+			 * don't share this bug -- this only matters for Rick 0,
+			 * but the assignment is harmless for the extras.
+			 */
+			e->n = 0x01;
+			e->sprite = 0x01;
 			e_rick_gozombie(i);
 		}
 	}
