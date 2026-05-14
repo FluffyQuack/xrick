@@ -352,6 +352,42 @@ ent_actvis(U8 frow, U8 lrow)
      * first AI tick acquires one. 0xff = unset sentinel.
      */
     ent_ents[e].target_rick = 0xff;
+
+    /*
+     * Initial-sprite priming for t3 entities.
+     *
+     * For t1/t2/box/bonus/sbonus the assignment a few lines up
+     * (sprite = (U8)spr) is correct: sprbase is itself a sprite number
+     * and the action function only adds a small offset to it.
+     *
+     * For t3 (dispatched when (n & 0x7f) >= 0x18, see ent_action),
+     * sprbase is instead an *index into ent_sprseq[]* and the action
+     * function computes:
+     *
+     *     i = ent_sprseq[sprbase + sproffs];
+     *     if (i == 0xff) i = ent_sprseq[sprbase];
+     *     sprite = i;
+     *
+     * so (U8)spr is just the index cast to a sprite number -- some
+     * unrelated frame (e.g. Rick or a chunk of map tile). Without this
+     * priming the first paint that runs before the first ent_action()
+     * call -- INIT_SUBMAP's ents_paintAll(), or the render-time interp
+     * paint that fires once between fade-in and the first action at
+     * game start -- shows that stray sprite for one frame, looking like
+     * "the trap rendered the wrong frame for one frame on submap entry".
+     * Mirror the action function's first-tick sprite calc here.
+     */
+    {
+      U8 n_lo = ent_ents[e].n & 0x7f;
+      if (n_lo >= 0x18) {
+        U16 idx = (U16)(ent_ents[e].sprbase + (U16)ent_ents[e].c1);
+        U8 sp = (idx < ENT_NBR_SPRSEQ) ? ent_sprseq[idx] : 0xff;
+        if (sp == 0xff && ent_ents[e].sprbase < ENT_NBR_SPRSEQ)
+          sp = ent_sprseq[ent_ents[e].sprbase];
+        if (sp != 0xff)
+          ent_ents[e].sprite = sp;
+      }
+    }
   }
 }
 
