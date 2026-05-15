@@ -45,6 +45,20 @@ extern int inifile_hueShift[8];
  * so the ini loader doesn't need to depend on the xinput module. */
 extern int inifile_xinputPlayer[8];
 
+/* Mapping of player slot -> DirectInput device slot (0..3), or -1 to
+ * disable. Defaults to all-disabled (XInput pads are filtered out of
+ * DI enumeration, so this is opt-in for non-XInput pads). */
+extern int inifile_dinputPlayer[8];
+
+/* Per-player gamepad face-button mapping mode.
+ * 1 = smart: A=jump, B=use stick, X=shoot, Y=bomb (each face button is
+ *     its own action).
+ * 0 = generic: all face buttons act like the keyboard fire button
+ *     (CONTROL_FIRE only), with direction supplied by the dpad/stick,
+ *     mirroring the keyboard control scheme.
+ * Default 1 for all players. */
+extern int inifile_smartPadMapping[8];
+
 /* Real-time scroll toggle: 1 = atomic shift + camera catch-up while
  * gameplay continues, 0 = original 8-tick paused scroll. Toggled in-
  * game by F11. Default 1. */

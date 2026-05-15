@@ -12,6 +12,7 @@
 #include "syssnd.h" /* SYSSND_MAXVOL */
 #include "e_rick.h" /* RICK_MAX */
 #include "sysxinput.h" /* sysxinput_player */
+#include "sysdinput.h" /* sysdinput_player */
 #include "game.h" /* game_interpolate */
 
 #include <stdio.h>
@@ -31,6 +32,8 @@ int inifile_scale = 2;
 U8 inifile_volume = SYSSND_MAXVOL;
 int inifile_hueShift[8] = { 0, 175, 255, 60, 220, 300, 30, 330 };
 int inifile_xinputPlayer[8] = { 0, 1, 2, 3, -1, -1, -1, -1 };
+int inifile_dinputPlayer[8] = { -1, -1, -1, -1, -1, -1, -1, -1 };
+int inifile_smartPadMapping[8] = { 1, 1, 1, 1, 1, 1, 1, 1 };
 int inifile_realtimeScroll = 1;
 int inifile_scrollCatchupFrames = 8;
 int inifile_fixFallLanding = 1;
@@ -128,6 +131,20 @@ inifile_load(const char *path)
 			inifile_xinputPlayer[idx] = n;
 			sysxinput_player[idx] = n;
 		}
+		else if (strlen(key) == 13 && !strncasecmp(key, "DinputPlayer", 12) &&
+		         key[12] >= '0' && key[12] <= '7') {
+			int idx = key[12] - '0';
+			n = atoi(val);
+			if (n < -1) n = -1;
+			if (n > 3)  n = 3;
+			inifile_dinputPlayer[idx] = n;
+			sysdinput_player[idx] = n;
+		}
+		else if (strlen(key) == 16 && !strncasecmp(key, "SmartPadMapping", 15) &&
+		         key[15] >= '0' && key[15] <= '7') {
+			int idx = key[15] - '0';
+			inifile_smartPadMapping[idx] = atoi(val) ? 1 : 0;
+		}
 		else if (!strcasecmp(key, "RealtimeScroll")) {
 			inifile_realtimeScroll = atoi(val) ? 1 : 0;
 			game_realtime_scroll = (U8)inifile_realtimeScroll;
@@ -200,6 +217,24 @@ inifile_save(const char *path)
 	fprintf(f, "XinputPlayer5 = %d\n", inifile_xinputPlayer[5]);
 	fprintf(f, "XinputPlayer6 = %d\n", inifile_xinputPlayer[6]);
 	fprintf(f, "XinputPlayer7 = %d\n\n", inifile_xinputPlayer[7]);
+	fprintf(f, "; Player DirectInput controller mappings (-1 disables, 0..3 selects DI device slot; XInput pads are filtered out of DI enumeration)\n");
+	fprintf(f, "DinputPlayer0 = %d\n", inifile_dinputPlayer[0]);
+	fprintf(f, "DinputPlayer1 = %d\n", inifile_dinputPlayer[1]);
+	fprintf(f, "DinputPlayer2 = %d\n", inifile_dinputPlayer[2]);
+	fprintf(f, "DinputPlayer3 = %d\n", inifile_dinputPlayer[3]);
+	fprintf(f, "DinputPlayer4 = %d\n", inifile_dinputPlayer[4]);
+	fprintf(f, "DinputPlayer5 = %d\n", inifile_dinputPlayer[5]);
+	fprintf(f, "DinputPlayer6 = %d\n", inifile_dinputPlayer[6]);
+	fprintf(f, "DinputPlayer7 = %d\n\n", inifile_dinputPlayer[7]);
+	fprintf(f, "; Per-player gamepad face-button mapping: 1 = smart (A=jump, B=stick, X=shoot, Y=bomb), 0 = generic (all face buttons act as fire, like keyboard)\n");
+	fprintf(f, "SmartPadMapping0 = %d\n", inifile_smartPadMapping[0]);
+	fprintf(f, "SmartPadMapping1 = %d\n", inifile_smartPadMapping[1]);
+	fprintf(f, "SmartPadMapping2 = %d\n", inifile_smartPadMapping[2]);
+	fprintf(f, "SmartPadMapping3 = %d\n", inifile_smartPadMapping[3]);
+	fprintf(f, "SmartPadMapping4 = %d\n", inifile_smartPadMapping[4]);
+	fprintf(f, "SmartPadMapping5 = %d\n", inifile_smartPadMapping[5]);
+	fprintf(f, "SmartPadMapping6 = %d\n", inifile_smartPadMapping[6]);
+	fprintf(f, "SmartPadMapping7 = %d\n\n", inifile_smartPadMapping[7]);
 	fprintf(f, "; 1 = Atomic shift + camera catch-up (gameplay never pauses), 0 = Original 8-tick paused scroll (toggle in-game with F11)\n");
 	fprintf(f, "RealtimeScroll = %d\n\n", inifile_realtimeScroll);
 	fprintf(f, "; Number of ticks the camera takes to visually catch up after a real-time scroll (1..30)\n");

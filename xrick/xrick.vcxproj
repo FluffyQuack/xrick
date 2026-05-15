@@ -172,6 +172,7 @@
     <ClInclude Include="include\system.h" />
     <ClInclude Include="include\sysvid.h" />
     <ClInclude Include="include\sysxinput.h" />
+    <ClInclude Include="include\sysdinput.h" />
     <ClInclude Include="include\tiles.h" />
     <ClInclude Include="include\unzip.h" />
     <ClInclude Include="include\util.h" />
@@ -224,6 +225,7 @@
     <ClCompile Include="src\system.c" />
     <ClCompile Include="src\sysvid.c" />
     <ClCompile Include="src\sysxinput.c" />
+    <ClCompile Include="src\sysdinput.c" />
     <ClCompile Include="src\tiles.c" />
     <ClCompile Include="src\unzip.c" />
     <ClCompile Include="src\util.c" />

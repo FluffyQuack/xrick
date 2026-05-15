@@ -20,6 +20,7 @@
 #include "system.h"
 #include "e_rick.h"  /* ricks[i].dir for B-button stick direction fallback */
 #include "game.h"    /* LEFT / RIGHT */
+#include "inifile.h" /* inifile_smartPadMapping */
 
 #include <string.h>
 
@@ -112,6 +113,24 @@ read_pad_bits(int i, int c, U8 include_global)
 	edge_Y    = press_Y && !prev_Y[i];
 	prev_X[i] = (U8)press_X;
 	prev_Y[i] = (U8)press_Y;
+
+	if (!inifile_smartPadMapping[i]) {
+		/* Generic mode: A/B/X/Y all behave like the keyboard fire button.
+		 * Direction comes from the dpad/stick; e_rick.c's overload of
+		 * FIRE+direction handles bullet/bomb/stop, matching the keyboard
+		 * scheme exactly. */
+		if (dpad_left)  bits |= CONTROL_LEFT;
+		if (dpad_right) bits |= CONTROL_RIGHT;
+		if (dpad_up)    bits |= CONTROL_UP;
+		if (dpad_down)  bits |= CONTROL_DOWN;
+		if ((wb & XINPUT_GAMEPAD_A) || press_B || press_X || press_Y)
+			bits |= CONTROL_FIRE;
+		if (include_global) {
+			if (wb & XINPUT_GAMEPAD_START) bits |= CONTROL_PAUSE;
+			if (wb & XINPUT_GAMEPAD_BACK)  bits |= CONTROL_EXIT;
+		}
+		return bits;
+	}
 
 	if (press_X) {
 		/* Hold: keep the gun pose visible. Trigger is cleared on

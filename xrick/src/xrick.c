@@ -18,6 +18,7 @@
 #include "fb.h"
 #include "inifile.h"
 #include "sysxinput.h"
+#include "sysdinput.h"
 
 #include <SDL.h>
 #include <signal.h>
@@ -78,6 +79,7 @@ sys_init(int argc, char** argv)
 	sysjoy_init();
 #endif
 	sysxinput_init();
+	sysdinput_init();
 #ifdef ENABLE_SOUND
 	if (sysarg_args_nosound == 0)
 		syssnd_init();
@@ -104,6 +106,7 @@ sys_shutdown(void)
 #ifdef ENABLE_JOYSTICK
 	sysjoy_shutdown();
 #endif
+	sysdinput_shutdown();
 	sysxinput_shutdown();
 	sysvid_shutdown();
 	sys_timing_shutdown();
