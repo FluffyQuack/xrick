@@ -48,7 +48,7 @@ player_kbd_t syskbd_players[CONTROL_PLAYERS] = {
 
 /* Global (non-per-player) keys. */
 U8 syskbd_pause = SDL_SCANCODE_P;
-U8 syskbd_end   = SDL_SCANCODE_E;
+U8 syskbd_end   = SDL_SCANCODE_UNKNOWN;
 U8 syskbd_xtra  = SDL_SCANCODE_ESCAPE;
 
 /* eof */
