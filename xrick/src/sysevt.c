@@ -93,12 +93,40 @@ static void
 set_rick_count(U8 n)
 {
 	U8 i;
-	ent_t *p1ent;
+	U8 anchor;
+	U8 anchor_found;
+	ent_t *src;
 
 	if (n < 1) n = 1;
 	if (n > RICK_MAX) n = RICK_MAX;
 
-	p1ent = &ent_ents[E_RICK_NO];
+	/*
+	 * Block while any Rick is mid-death animation (zombie = "fall into
+	 * the screen"). Activating/deactivating slots mid-zombie leaves the
+	 * engine in a weird state.
+	 */
+	for (i = 0; i < RICK_MAX; i++) {
+		if (rick_active[i] && R_STTST(i, E_RICK_STZOMBIE) && !R_STTST(i, E_RICK_STDEAD))
+			return;
+	}
+
+	/*
+	 * Find an alive Rick to anchor new spawns on. Slot 0 may be dead, so
+	 * we can't just use P1's position. If nobody is alive there is also
+	 * no sensible place to spawn -- bail out.
+	 */
+	anchor_found = FALSE;
+	anchor = 0;
+	for (i = 0; i < RICK_MAX; i++) {
+		if (rick_active[i] && !R_STTST(i, E_RICK_STDEAD | E_RICK_STZOMBIE)) {
+			anchor = i;
+			anchor_found = TRUE;
+			break;
+		}
+	}
+	if (!anchor_found) return;
+
+	src = ricks_get_ent(anchor);
 
 	for (i = 1; i < RICK_MAX; i++) {  /* slot 0 (P1) always active */
 		if (i < n) {
@@ -118,10 +146,19 @@ set_rick_count(U8 n)
 				ricks[i].scrawl  = FALSE;
 				ricks[i].atExit  = FALSE;
 				ricks[i].prev_stopped = FALSE;
-				/* Spawn at P1's current position. */
-				ricks[i].save_x     = p1ent->x;
-				ricks[i].save_y     = p1ent->y;
-				ricks[i].save_crawl = R_STTST(0, E_RICK_STCRAWL) ? TRUE : FALSE;
+				/*
+				 * The live entity (e->x/e->y below) drops in next to the
+				 * anchor so the new Rick appears where the action is, but
+				 * the per-Rick restart snapshot must point at the submap
+				 * spawn -- otherwise a death-restart would send this Rick
+				 * to wherever P0 happened to be when the count was bumped.
+				 * Rick 0's save_* always holds the current submap spawn
+				 * (game_save writes it at every INIT_MAP / INIT_SUBMAP and
+				 * Rick 0 is always active), so mirror it here.
+				 */
+				ricks[i].save_x     = ricks[0].save_x;
+				ricks[i].save_y     = ricks[0].save_y;
+				ricks[i].save_crawl = ricks[0].save_crawl;
 				/* Forget any stale input that might have been buffered. */
 				control_status_p[i] = 0;
 
@@ -130,8 +167,8 @@ set_rick_count(U8 n)
 				 * starting next tick. Mirrors the field set init() does
 				 * for ent_ents[1].
 				 */
-				e->x = p1ent->x;
-				e->y = p1ent->y;
+				e->x = src->x;
+				e->y = src->y;
 				e->w = 0x18;
 				e->h = 0x15;
 				e->n = 0x01;
