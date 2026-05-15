@@ -23,8 +23,9 @@
 
 #include <string.h>
 
-/* Identity mapping: P0->xpad0, P1->xpad1, ... -1 disables a slot. */
-int sysxinput_player[4] = { 0, 1, 2, 3 };
+/* Identity mapping: P0->xpad0, P1->xpad1, ... -1 disables a slot.
+ * XInput only exposes 4 controllers, so P4..P7 default to disabled. */
+int sysxinput_player[8] = { 0, 1, 2, 3, -1, -1, -1, -1 };
 
 #if defined(_WIN32) && !defined(EMSCRIPTEN)
 
@@ -39,7 +40,7 @@ static XINPUT_STATE xStates[XPAD_COUNT];
 
 /* Bits we OR'd onto control_status_p[i] on the previous apply(); used
  * to clear our own contribution before computing the new one. */
-static U8 pad_owned[4];
+static U8 pad_owned[8];
 
 /* Previous-frame X/Y state.
  *
@@ -52,8 +53,8 @@ static U8 pad_owned[4];
  *
  * Y (bomb): edge-only. Otherwise holding Y would drop a new bomb every
  * time the previous one exploded. */
-static U8 prev_X[4];
-static U8 prev_Y[4];
+static U8 prev_X[8];
+static U8 prev_Y[8];
 
 static void
 xinput_update(void)

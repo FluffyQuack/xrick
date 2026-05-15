@@ -21,6 +21,7 @@
 
 #ifdef __MSVC__
 #define strcasecmp _stricmp
+#define strncasecmp _strnicmp
 #endif
 
 int inifile_playerCount = 1;
@@ -28,8 +29,8 @@ int inifile_linearFilter = 1;
 int inifile_interpolate = 1;
 int inifile_scale = 2;
 U8 inifile_volume = SYSSND_MAXVOL;
-int inifile_hueShift[4] = { 0, 120, 240, 60 };
-int inifile_xinputPlayer[4] = { 0, 1, 2, 3 };
+int inifile_hueShift[8] = { 0, 175, 255, 60, 220, 300, 30, 330 };
+int inifile_xinputPlayer[8] = { 0, 1, 2, 3, -1, -1, -1, -1 };
 int inifile_realtimeScroll = 1;
 int inifile_scrollCatchupFrames = 8;
 int inifile_fixFallLanding = 1;
@@ -110,20 +111,16 @@ inifile_load(const char *path)
 			if (n > SYSSND_MAXVOL) n = SYSSND_MAXVOL;
 			inifile_volume = (U8)n;
 		}
-		else if (!strcasecmp(key, "HueShift0") ||
-		         !strcasecmp(key, "HueShift1") ||
-		         !strcasecmp(key, "HueShift2") ||
-		         !strcasecmp(key, "HueShift3")) {
+		else if (strlen(key) == 9 && !strncasecmp(key, "HueShift", 8) &&
+		         key[8] >= '0' && key[8] <= '7') {
 			int idx = key[8] - '0';
 			n = atoi(val);
 			while (n < 0) n += 360;
 			n %= 360;
 			inifile_hueShift[idx] = n;
 		}
-		else if (!strcasecmp(key, "XinputPlayer0") ||
-		         !strcasecmp(key, "XinputPlayer1") ||
-		         !strcasecmp(key, "XinputPlayer2") ||
-		         !strcasecmp(key, "XinputPlayer3")) {
+		else if (strlen(key) == 13 && !strncasecmp(key, "XinputPlayer", 12) &&
+		         key[12] >= '0' && key[12] <= '7') {
 			int idx = key[12] - '0';
 			n = atoi(val);
 			if (n < -1) n = -1;
@@ -175,7 +172,7 @@ inifile_save(const char *path)
 		return;
 	}
 
-	fprintf(f, "; Quantity of active players (change in-game with 1,2,3,4 keys)\n");
+	fprintf(f, "; Quantity of active players (change in-game with 1..8 keys)\n");
 	fprintf(f, "PlayerCount = %d\n\n", inifile_playerCount);
 	fprintf(f, "; 1 = Bilinear filter, 0 = Nearest-neighbour filter\n");
 	fprintf(f, "LinearFilter = %d\n\n", inifile_linearFilter);
@@ -189,12 +186,20 @@ inifile_save(const char *path)
 	fprintf(f, "HueShift0 = %d\n", inifile_hueShift[0]);
 	fprintf(f, "HueShift1 = %d\n", inifile_hueShift[1]);
 	fprintf(f, "HueShift2 = %d\n", inifile_hueShift[2]);
-	fprintf(f, "HueShift3 = %d\n\n", inifile_hueShift[3]);
-	fprintf(f, "; Player xinput/Xbox controller mappings\n");
+	fprintf(f, "HueShift3 = %d\n", inifile_hueShift[3]);
+	fprintf(f, "HueShift4 = %d\n", inifile_hueShift[4]);
+	fprintf(f, "HueShift5 = %d\n", inifile_hueShift[5]);
+	fprintf(f, "HueShift6 = %d\n", inifile_hueShift[6]);
+	fprintf(f, "HueShift7 = %d\n\n", inifile_hueShift[7]);
+	fprintf(f, "; Player xinput/Xbox controller mappings (-1 disables, 0..3 selects XInput slot)\n");
 	fprintf(f, "XinputPlayer0 = %d\n", inifile_xinputPlayer[0]);
 	fprintf(f, "XinputPlayer1 = %d\n", inifile_xinputPlayer[1]);
 	fprintf(f, "XinputPlayer2 = %d\n", inifile_xinputPlayer[2]);
-	fprintf(f, "XinputPlayer3 = %d\n\n", inifile_xinputPlayer[3]);
+	fprintf(f, "XinputPlayer3 = %d\n", inifile_xinputPlayer[3]);
+	fprintf(f, "XinputPlayer4 = %d\n", inifile_xinputPlayer[4]);
+	fprintf(f, "XinputPlayer5 = %d\n", inifile_xinputPlayer[5]);
+	fprintf(f, "XinputPlayer6 = %d\n", inifile_xinputPlayer[6]);
+	fprintf(f, "XinputPlayer7 = %d\n\n", inifile_xinputPlayer[7]);
 	fprintf(f, "; 1 = Atomic shift + camera catch-up (gameplay never pauses), 0 = Original 8-tick paused scroll (toggle in-game with F11)\n");
 	fprintf(f, "RealtimeScroll = %d\n\n", inifile_realtimeScroll);
 	fprintf(f, "; Number of ticks the camera takes to visually catch up after a real-time scroll (1..30)\n");

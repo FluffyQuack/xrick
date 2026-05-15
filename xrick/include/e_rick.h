@@ -23,7 +23,7 @@
  * only Rick 0 is active; Stages 2-3 wire up input and the per-Rick action
  * loop. See COOP_ROADMAP.md.
  */
-#define RICK_MAX 4
+#define RICK_MAX 8
 
 /*
  * Per-Rick state. All of these fields used to be file-scope globals or

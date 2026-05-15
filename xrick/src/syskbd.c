@@ -29,6 +29,7 @@
  *   [1] P2  : WASD + LSHIFT
  *   [2] P3  : IJKL + RETURN
  *   [3] P4  : no bindings (all zero)
+ *   [4] P5..P8 : no bindings (controller-only)
  *
  * The legacy P1 alternates (Z/X/K/O) were removed -- they collided with
  * P3's IJKL layout and the original codebase only kept them for ports
@@ -38,7 +39,11 @@ player_kbd_t syskbd_players[CONTROL_PLAYERS] = {
 	/* P1 */ { SDL_SCANCODE_UP, SDL_SCANCODE_DOWN, SDL_SCANCODE_LEFT, SDL_SCANCODE_RIGHT, SDL_SCANCODE_SPACE },
 	/* P2 */ { SDL_SCANCODE_W,  SDL_SCANCODE_S,    SDL_SCANCODE_A,    SDL_SCANCODE_D,     SDL_SCANCODE_LSHIFT },
 	/* P3 */ { SDL_SCANCODE_I,  SDL_SCANCODE_K,    SDL_SCANCODE_J,    SDL_SCANCODE_L,     SDL_SCANCODE_RETURN },
-	/* P4 */ { 0,               0,                 0,                 0,                  0 }
+	/* P4 */ { 0,               0,                 0,                 0,                  0 },
+	/* P5 */ { 0,               0,                 0,                 0,                  0 },
+	/* P6 */ { 0,               0,                 0,                 0,                  0 },
+	/* P7 */ { 0,               0,                 0,                 0,                  0 },
+	/* P8 */ { 0,               0,                 0,                 0,                  0 }
 };
 
 /* Global (non-per-player) keys. */

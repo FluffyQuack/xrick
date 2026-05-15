@@ -54,7 +54,10 @@
  * range with bit 0x10 clear.
  */
 #define HAT_PAL_BASE 32           /* first extra palette slot we own */
-#define HAT_PAL_PER_RICK 32       /* stride per Rick (16 colours + 16-byte gap) */
+#define HAT_PAL_PER_RICK 16       /* stride per Rick (16 colours, no gap)
+                                   * Must keep HAT_PAL_BASE + RICK_MAX*HAT_PAL_PER_RICK <= 256
+                                   * since sysvid_setPaletteEntry rejects idx>=256
+                                   * and hat_remap stores slot as U8. */
 #define HAT_OUTLINE_INDEX 4       /* palette index of the (32,36,32) outline */
 
 /* remap[r][i] = palette index to write for sprite low-nibble i on Rick r.

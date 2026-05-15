@@ -33,7 +33,7 @@
  * Must equal RICK_MAX in e_rick.h; a static_assert isn't worth the C89
  * gymnastics, so just keep them in sync if either ever moves.
  */
-#define CONTROL_PLAYERS 4
+#define CONTROL_PLAYERS 8
 
 extern U8 control_status_p[CONTROL_PLAYERS];
 

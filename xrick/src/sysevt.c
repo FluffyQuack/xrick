@@ -221,7 +221,7 @@ processEvent()
 			SETBIT(control_status, CONTROL_EXIT);
 			control_last = CONTROL_EXIT;
 		}
-		/* Player-count hotkeys. SDL ignores keyboard layout, so SCANCODE_1..4
+		/* Player-count hotkeys. SDL ignores keyboard layout, so SCANCODE_1..8
 		 * are the digit row regardless of locale. */
 		else if (key == SDL_SCANCODE_1) {
 			set_rick_count(1);
@@ -234,6 +234,18 @@ processEvent()
 		}
 		else if (key == SDL_SCANCODE_4) {
 			set_rick_count(4);
+		}
+		else if (key == SDL_SCANCODE_5) {
+			set_rick_count(5);
+		}
+		else if (key == SDL_SCANCODE_6) {
+			set_rick_count(6);
+		}
+		else if (key == SDL_SCANCODE_7) {
+			set_rick_count(7);
+		}
+		else if (key == SDL_SCANCODE_8) {
+			set_rick_count(8);
 		}
 		else if (key == SDL_SCANCODE_F1) {
 			sysvid_toggleFullscreen();

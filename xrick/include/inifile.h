@@ -37,13 +37,13 @@ extern U8 inifile_volume;
 /* Per-Rick hat hue-shift in degrees (-360..360). Each Rick gets a hue shift
  * applied to their hat colours so the players can be told apart. A value of
  * 0 leaves the hat untouched (no extra paint pass). */
-extern int inifile_hueShift[4];
+extern int inifile_hueShift[8];
 
 /* Mapping of player slot -> xinput controller index (0..3), or -1 to
  * disable controller input for that player. Defaults to identity, so a
  * single pad plugged into port 0 drives P1. Stored here (vs. sysxinput.h)
  * so the ini loader doesn't need to depend on the xinput module. */
-extern int inifile_xinputPlayer[4];
+extern int inifile_xinputPlayer[8];
 
 /* Real-time scroll toggle: 1 = atomic shift + camera catch-up while
  * gameplay continues, 0 = original 8-tick paused scroll. Toggled in-

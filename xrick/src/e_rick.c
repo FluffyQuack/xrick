@@ -39,7 +39,7 @@
  */
 rick_t ricks[RICK_MAX];
 U8 rick_count = 1;
-U8 rick_active[RICK_MAX] = { TRUE, FALSE, FALSE, FALSE };
+U8 rick_active[RICK_MAX] = { TRUE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE };
 
 /*
  * Co-op (Stage 3): backing entities for Ricks 1..3. Approach (b) keeps the
