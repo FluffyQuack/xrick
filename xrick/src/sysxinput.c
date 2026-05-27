@@ -106,9 +106,18 @@ read_pad_bits(int i, int c, U8 include_global)
 	dpad_up    = (wb & XINPUT_GAMEPAD_DPAD_UP)    || ly >  XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
 	dpad_down  = (wb & XINPUT_GAMEPAD_DPAD_DOWN)  || ly < -XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE;
 
-	press_X = (wb & XINPUT_GAMEPAD_X) ? 1 : 0;
-	press_Y = (wb & XINPUT_GAMEPAD_Y) ? 1 : 0;
-	press_B = (wb & XINPUT_GAMEPAD_B) ? 1 : 0;
+	/* XinputDisableUpN suppresses the directional up so accidental
+	 * dpad/stick-up doesn't trigger jump for players who rely on the
+	 * jump face button. The face button itself is unaffected. */
+	if (inifile_xinputDisableUp[i]) dpad_up = 0;
+
+	/* Resolve per-player face-button assignments. The defaults A/B/X/Y
+	 * are the legacy hardcoded values; the user can remap each action
+	 * via XinputJumpBtnN / XinputStickBtnN / XinputShootBtnN /
+	 * XinputBombBtnN. 0 means "no button bound" (action disabled). */
+	press_X = (inifile_xinputBtn[i][2] && (wb & inifile_xinputBtn[i][2])) ? 1 : 0; /* shoot */
+	press_Y = (inifile_xinputBtn[i][3] && (wb & inifile_xinputBtn[i][3])) ? 1 : 0; /* bomb  */
+	press_B = (inifile_xinputBtn[i][1] && (wb & inifile_xinputBtn[i][1])) ? 1 : 0; /* stick */
 	release_X = !press_X && prev_X[i];
 	edge_Y    = press_Y && !prev_Y[i];
 	prev_X[i] = (U8)press_X;
@@ -123,7 +132,8 @@ read_pad_bits(int i, int c, U8 include_global)
 		if (dpad_right) bits |= CONTROL_RIGHT;
 		if (dpad_up)    bits |= CONTROL_UP;
 		if (dpad_down)  bits |= CONTROL_DOWN;
-		if ((wb & XINPUT_GAMEPAD_A) || press_B || press_X || press_Y)
+		if ((inifile_xinputBtn[i][0] && (wb & inifile_xinputBtn[i][0])) ||
+		    press_B || press_X || press_Y)
 			bits |= CONTROL_FIRE;
 		if (include_global) {
 			if (wb & XINPUT_GAMEPAD_START) bits |= CONTROL_PAUSE;
@@ -166,7 +176,8 @@ read_pad_bits(int i, int c, U8 include_global)
 		if (dpad_right) bits |= CONTROL_RIGHT;
 		if (dpad_up)    bits |= CONTROL_UP;
 		if (dpad_down)  bits |= CONTROL_DOWN;
-		if (wb & XINPUT_GAMEPAD_A) bits |= CONTROL_UP; /* jump */
+		if (inifile_xinputBtn[i][0] && (wb & inifile_xinputBtn[i][0]))
+			bits |= CONTROL_UP; /* jump */
 	}
 
 	/* Pause / end / exit are P1-only globals in the rest of the codebase;

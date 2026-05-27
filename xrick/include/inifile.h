@@ -77,6 +77,38 @@ extern int inifile_fixFallLanding;
  * 8 matches the original 8-tick scroll feel. Clamped to [1, 30]. */
 extern int inifile_scrollCatchupFrames;
 
+/* When set, the corresponding player's XInput/DirectInput pad ignores
+ * the "up" direction from the dpad/analog stick. The face-button
+ * configured for jump still works. Useful when the player jumps via a
+ * face button and doesn't want stray stick-up to fire a jump. */
+extern int inifile_xinputDisableUp[8];
+extern int inifile_dinputDisableUp[8];
+
+/* Per-player XInput face-button assignment. Inner index:
+ *   0 = jump  (default A    = 0x1000)
+ *   1 = stick (default B    = 0x2000)
+ *   2 = shoot (default X    = 0x4000)
+ *   3 = bomb  (default Y    = 0x8000)
+ * Values are raw XINPUT_GAMEPAD_* WORD masks; we store them as
+ * unsigned ints so this header doesn't depend on <xinput.h>.
+ * Valid masks: A 0x1000, B 0x2000, X 0x4000, Y 0x8000,
+ *              LB 0x0100, RB 0x0200. 0 disables that action. */
+extern unsigned int inifile_xinputBtn[8][4];
+
+/* Per-player DirectInput face-button assignment. Inner index matches
+ * inifile_xinputBtn (jump/stick/shoot/bomb). Stored as 0-based button
+ * indices into DIJOYSTATE2.rgbButtons; -1 disables that action.
+ * Defaults: 0,1,2,3 (matches the common A/B/X/Y layout). */
+extern int inifile_dinputBtn[8][4];
+
+/* Per-player keyboard bindings for P0..P2 (the three keyboard players).
+ * Stored as Windows Virtual-Key codes (e.g. 0x26 = VK_UP) for human-
+ * readability in the ini; converted to SDL scancodes at load time and
+ * written into syskbd_players[]. Inner index:
+ *   0 = up, 1 = down, 2 = left, 3 = right, 4 = action.
+ * 0 disables that binding. */
+extern int inifile_keyBinding[3][5];
+
 /* Load and apply the given ini file. Safe to call when the file does
  * not exist (silently no-op). */
 void inifile_load(const char *path);

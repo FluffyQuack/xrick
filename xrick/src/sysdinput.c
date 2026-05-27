@@ -195,9 +195,15 @@ read_pad_bits(int i, int c, U8 include_global)
 		if (pov >= 22500 && pov <= 31500) dpad_left  = 1;
 	}
 
-	press_X = (s->rgbButtons[2] & 0x80) ? 1 : 0;
-	press_Y = (s->rgbButtons[3] & 0x80) ? 1 : 0;
-	press_B = (s->rgbButtons[1] & 0x80) ? 1 : 0;
+	/* Mirror of the XInput "DisableUp" behaviour -- see sysxinput.c. */
+	if (inifile_dinputDisableUp[i]) dpad_up = 0;
+
+	/* Per-player customizable face buttons. inifile_dinputBtn[i] holds
+	 * 0-based DI button indices for jump/stick/shoot/bomb. -1 disables.
+	 * Defaults are 0/1/2/3 = standard A/B/X/Y on most pads. */
+	press_X = (inifile_dinputBtn[i][2] >= 0 && (s->rgbButtons[inifile_dinputBtn[i][2]] & 0x80)) ? 1 : 0;
+	press_Y = (inifile_dinputBtn[i][3] >= 0 && (s->rgbButtons[inifile_dinputBtn[i][3]] & 0x80)) ? 1 : 0;
+	press_B = (inifile_dinputBtn[i][1] >= 0 && (s->rgbButtons[inifile_dinputBtn[i][1]] & 0x80)) ? 1 : 0;
 	release_X = !press_X && prev_X[i];
 	edge_Y    = press_Y && !prev_Y[i];
 	prev_X[i] = (U8)press_X;
@@ -210,7 +216,8 @@ read_pad_bits(int i, int c, U8 include_global)
 		if (dpad_right) bits |= CONTROL_RIGHT;
 		if (dpad_up)    bits |= CONTROL_UP;
 		if (dpad_down)  bits |= CONTROL_DOWN;
-		if ((s->rgbButtons[0] & 0x80) || press_B || press_X || press_Y)
+		if ((inifile_dinputBtn[i][0] >= 0 && (s->rgbButtons[inifile_dinputBtn[i][0]] & 0x80)) ||
+		    press_B || press_X || press_Y)
 			bits |= CONTROL_FIRE;
 		if (include_global) {
 			if (s->rgbButtons[7] & 0x80) bits |= CONTROL_PAUSE;
@@ -245,7 +252,8 @@ read_pad_bits(int i, int c, U8 include_global)
 		if (dpad_right) bits |= CONTROL_RIGHT;
 		if (dpad_up)    bits |= CONTROL_UP;
 		if (dpad_down)  bits |= CONTROL_DOWN;
-		if (s->rgbButtons[0] & 0x80) bits |= CONTROL_UP; /* A = jump */
+		if (inifile_dinputBtn[i][0] >= 0 && (s->rgbButtons[inifile_dinputBtn[i][0]] & 0x80))
+			bits |= CONTROL_UP; /* jump */
 	}
 
 	if (include_global) {
