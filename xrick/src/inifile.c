@@ -208,6 +208,10 @@ inifile_save(const char *path)
 	fprintf(f, "HueShift5 = %d\n", inifile_hueShift[5]);
 	fprintf(f, "HueShift6 = %d\n", inifile_hueShift[6]);
 	fprintf(f, "HueShift7 = %d\n\n", inifile_hueShift[7]);
+	fprintf(f, "; Keyboard controls (can't be re-mapped)\n");
+	fprintf(f, "; Player0 = Directional keys + Space\n");
+	fprintf(f, "; Player1 = WASD + Shift\n");
+	fprintf(f, "; Player2 = IJKL + Return\n\n");
 	fprintf(f, "; Player xinput/Xbox controller mappings (-1 disables, 0..3 selects XInput slot)\n");
 	fprintf(f, "XinputPlayer0 = %d\n", inifile_xinputPlayer[0]);
 	fprintf(f, "XinputPlayer1 = %d\n", inifile_xinputPlayer[1]);
@@ -217,7 +221,7 @@ inifile_save(const char *path)
 	fprintf(f, "XinputPlayer5 = %d\n", inifile_xinputPlayer[5]);
 	fprintf(f, "XinputPlayer6 = %d\n", inifile_xinputPlayer[6]);
 	fprintf(f, "XinputPlayer7 = %d\n\n", inifile_xinputPlayer[7]);
-	fprintf(f, "; Player DirectInput controller mappings (-1 disables, 0..3 selects DI device slot; XInput pads are filtered out of DI enumeration)\n");
+	fprintf(f, "; Player DirectInput controller mappings (-1 disables, 0..3 selects DI device slot\n");
 	fprintf(f, "DinputPlayer0 = %d\n", inifile_dinputPlayer[0]);
 	fprintf(f, "DinputPlayer1 = %d\n", inifile_dinputPlayer[1]);
 	fprintf(f, "DinputPlayer2 = %d\n", inifile_dinputPlayer[2]);
